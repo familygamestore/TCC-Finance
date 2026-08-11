@@ -25,9 +25,11 @@ async function apiGet<T>(action: string, params: Record<string, string> = {}): P
 }
 
 // Apps Script Web App menerima GET/POST; PUT/DELETE dipetakan lewat field method.
-async function apiSend<T>(
+// B dibuat generic (extends object) supaya bisa menerima tipe apa pun sebagai body
+// (Record<string, unknown>, EventPayload, dll) tanpa error assignability seperti sebelumnya.
+async function apiSend<T, B extends object = Record<string, unknown>>(
   action: string,
-  body: Record<string, unknown>,
+  body: B,
   method: 'POST' | 'PUT' | 'DELETE' = 'POST'
 ): Promise<T> {
   const res = await fetch(getBaseUrl(), {
@@ -65,32 +67,28 @@ export type Transaction = {
   [key: string]: unknown;
 };
 
-export type EventItem = {
-  event_id: string;
-  nama_event: string;
-  game: string;
-  tanggal_mulai: string;
-  tanggal_selesai: string;
-  jumlah_peserta: number;
-  biaya_registrasi: number;
-  target_pemasukan: number;
-  budget: number;
-  prize_pool: number;
-  status: string;
-};
+// EventItem & EventPayload diimpor dari types/event supaya tidak ada
+// definisi ganda dan supaya createEvent bisa type-safe menerima EventPayload.
+import type { EventItem, EventPayload } from '@/types/event';
+export type { EventItem };
 
 export const api = {
   getDashboard: () => apiGet<Dashboard>('dashboard'),
   getTransactions: (params: Record<string, string> = {}) => apiGet<Transaction[]>('transactions', params),
   getEvents: (params: Record<string, string> = {}) => apiGet<EventItem[]>('events', params),
   getCategories: () => apiGet<{ category_id: string; nama_kategori: string; tipe: string }[]>('categories'),
+
   createIncome: (data: Record<string, unknown>) => apiSend('income', data),
   createExpense: (data: Record<string, unknown>) => apiSend('expense', data),
-  createEvent: (data: Record<string, unknown>) => apiSend('event', data),
+
+  // Menerima EventPayload langsung — tidak lagi dipaksa ke Record<string, unknown>
+  createEvent: (data: EventPayload) => apiSend<EventItem, EventPayload>('event', data),
+
   updateTransaction: (sheet: 'income' | 'expense', id: string, fields: Record<string, unknown>) =>
     apiSend('transaction', { sheet, id, fields }, 'PUT'),
   deleteTransaction: (sheet: 'income' | 'expense', id: string) =>
     apiSend('transaction', { sheet, id }, 'DELETE'),
+
   updateEvent: (id: string, fields: Record<string, unknown>) => apiSend('event', { id, fields }, 'PUT'),
   deleteEvent: (id: string) => apiSend('event', { id }, 'DELETE')
 };
