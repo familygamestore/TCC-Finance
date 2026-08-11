@@ -12,7 +12,13 @@ async function apiGet<T>(action: string, params: Record<string, string> = {}): P
 
 // Apps Script Web App hanya menerima GET & POST secara native,
 // jadi PUT/DELETE dikirim sebagai POST dengan field "method".
-async function apiSend<T>(action: string, body: Record<string, unknown>, method: 'POST' | 'PUT' | 'DELETE' = 'POST'): Promise<T> {
+// B dibuat generic (extends object) supaya bisa menerima tipe apa pun
+// (Record<string, unknown>, EventPayload, dll) tanpa error assignability.
+async function apiSend<T, B extends object = Record<string, unknown>>(
+  action: string,
+  body: B,
+  method: 'POST' | 'PUT' | 'DELETE' = 'POST'
+): Promise<T> {
   const res = await fetch(BASE_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain' }, // hindari CORS preflight ke Apps Script
@@ -62,6 +68,9 @@ export type EventItem = {
   status: string;
 };
 
+// Import EventPayload dari types/event supaya createEvent type-safe
+import type { EventPayload } from '@/types/event';
+
 export const api = {
   getDashboard: () => apiGet<Dashboard>('dashboard'),
   getTransactions: (params: Record<string, string> = {}) => apiGet<Transaction[]>('transactions', params),
@@ -70,7 +79,9 @@ export const api = {
 
   createIncome: (data: Record<string, unknown>) => apiSend('income', data, 'POST'),
   createExpense: (data: Record<string, unknown>) => apiSend('expense', data, 'POST'),
-  createEvent: (data: Record<string, unknown>) => apiSend('event', data, 'POST'),
+
+  // Sekarang menerima EventPayload langsung — tidak dipaksa ke Record<string, unknown>
+  createEvent: (data: EventPayload) => apiSend<EventItem, EventPayload>('event', data, 'POST'),
 
   updateTransaction: (sheet: 'income' | 'expense', id: string, fields: Record<string, unknown>) =>
     apiSend('transaction', { sheet, id, fields }, 'PUT'),
