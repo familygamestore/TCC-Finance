@@ -1,1 +1,0 @@
-Place brand logos here.

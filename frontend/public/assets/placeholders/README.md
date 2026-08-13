@@ -1,1 +1,0 @@
-Place fallback images here.
