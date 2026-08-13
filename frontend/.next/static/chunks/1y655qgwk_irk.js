@@ -1,0 +1,1 @@
+(globalThis.TURBOPACK||(globalThis.TURBOPACK=[])).push(["object"==typeof document?document.currentScript:void 0,27094,e=>{"use strict";var i=e.i(43476),t=e.i(71645);e.s(["default",0,function(){return(0,t.useEffect)(()=>{location.href="/super-admin"},[]),(0,i.jsx)("div",{className:"loading",children:"Membuka Super Admin…"})}])}]);
