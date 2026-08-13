@@ -117,3 +117,6 @@ Urutan pengujian:
 17. Pastikan edit/hapus hanya berhasil dengan session Super Admin.
 18. Ganti password Super Admin.
 19. Logout dan pastikan token lama tidak dapat digunakan.
+
+## V11 note
+The V11 upgrade adds a public landing page, responsive analytics dashboard, brand-scoped cash visibility, and Super Admin Access Control. Keep `frontend/.env.local` out of GitHub and configure `NEXT_PUBLIC_APPS_SCRIPT_URL` in Vercel when deploying.

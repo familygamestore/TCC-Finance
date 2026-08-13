@@ -1,76 +1,35 @@
 'use client';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { getAuthRole } from '@/lib/api';
 
-import { useCallback, useEffect, useState } from 'react';
-import { api, Dashboard, getAuthRole } from '@/lib/api';
-import Card from '@/components/common/Card';
-import { useRouter } from 'next/navigation';
-import { formatRupiah } from '@/utils/formatters';
-
-export default function DashboardPage() {
-  const [role, setRole] = useState<string | null>(null);
-  const [data, setData] = useState<Dashboard | null>(null);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const router = useRouter();
-
-  const load = useCallback(async () => {
-    setLoading(true); setError('');
-    try { setData(await api.getDashboard()); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Gagal memuat dashboard.'); }
-    finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => {
-    const sync = () => setRole(getAuthRole() || null);
-    sync();
-    window.addEventListener('tcc-auth-changed', sync);
-    window.addEventListener('storage', sync);
-    return () => { window.removeEventListener('tcc-auth-changed', sync); window.removeEventListener('storage', sync); };
-  }, []);
-
-  useEffect(() => { if (role === 'SUPER_ADMIN') void load(); }, [role, load]);
-
-  if (role === null) return <div className="dashboard-skeleton" aria-busy="true"><div className="skeleton-header"/><div className="skeleton-grid">{[1,2,3,4].map(x => <div className="skeleton-card" key={x}/>)}</div><div className="skeleton-table"/></div>;
-
-  if (role !== 'SUPER_ADMIN') return <div className="access-page"><div className="access-panel"><div className="access-icon">⌁</div><div className="eyebrow">Protected workspace</div><h1>Super Admin access required</h1><p className="subtitle">Dashboard utama berisi kas lintas brand, ledger dan approval. Masuk menggunakan akun Super Admin untuk melanjutkan.</p><div className="actions"><button className="btn" onClick={() => router.push('/super-admin')}>Masuk Super Admin</button><button className="btn secondary" onClick={() => router.push('/admin')}>Area Admin</button></div></div></div>;
-
-  const saldo = data?.saldo ?? 0;
-  const net = (data?.total_income ?? 0) - (data?.total_expense ?? 0);
-
-  return <div>
-    <div className="page-header command-header">
-      <div><div className="eyebrow">Command Center · Finance</div><h1>Good evening, Admin.</h1><p className="subtitle">Pantau kas, transaksi, event, dan approval dari satu workspace.</p></div>
-      <div className="actions"><span className="live-pill"><span className="status-dot"/> System online</span><button className="btn secondary" onClick={() => void load()} disabled={loading}>{loading ? 'Memuat…' : '↻ Refresh'}</button></div>
-    </div>
-
-    {error && <div className="alert"><span>⚠</span><span>{error}</span><button className="alert-action" onClick={() => void load()}>Coba lagi</button></div>}
-
-    {loading && !data && <div className="loading-panel"><span className="spinner"/> Mengambil data keuangan...</div>}
-
-    {data && <>
-      <section className="hero-grid">
-        <div className="hero-card">
-          <div className="hero-top"><div><div className="eyebrow">Total cash balance</div><span className="hero-label">Saldo tersedia lintas workspace</span></div><span className="hero-chip">LIVE</span></div>
-          <div className="hero-value">{formatRupiah(saldo)}</div>
-          <div className="hero-bottom"><span><i className="positive-dot"/> Data tersinkron</span><span>{data.jumlah_transaksi} transaksi</span><span>{data.jumlah_event} event</span></div>
-        </div>
-        <div className="quick-panel"><div className="eyebrow">Quick actions</div><div className="quick-actions"><button onClick={() => router.push('/transactions')}><b>↕</b><span>Transaksi</span></button><button onClick={() => router.push('/requests')}><b>✓</b><span>Pengajuan</span></button><button onClick={() => router.push('/events')}><b>◆</b><span>Event</span></button><button onClick={() => router.push('/cash')}><b>₽</b><span>Kas brand</span></button></div></div>
-      </section>
-
-      <div className="grid metric-grid">
-        <Card icon="₽" label="Saldo" value={formatRupiah(data.saldo)} />
-        <Card icon="↗" label="Total pemasukan" value={formatRupiah(data.total_income)} />
-        <Card icon="↘" label="Total pengeluaran" value={formatRupiah(data.total_expense)} />
-        <Card icon="◆" label="Net movement" value={formatRupiah(net)} />
+export default function LandingPage(){
+  const [role,setRole]=useState('');
+  useEffect(()=>{setRole(getAuthRole());},[]);
+  const target=role==='SUPER_ADMIN'?'/dashboard':role==='ADMIN'?'/requests':'/admin';
+  return <main className="landing-page">
+    <section className="landing-hero">
+      <div className="landing-copy">
+        <span className="landing-kicker">TCC FINANCE • COMMAND CENTER</span>
+        <h1>Finance, cash & event operations dalam <em>satu workspace.</em></h1>
+        <p>Kelola kas multi-brand, transaksi, pengajuan, event, approval, dan analytics dengan akses yang dikontrol per brand.</p>
+        <div className="landing-actions"><Link className="btn landing-primary" href={target}>{role?'Buka Workspace':'Masuk ke Dashboard'}</Link><a className="btn secondary" href="#features">Lihat fitur</a></div>
+        <div className="landing-trust"><span>✓ Multi-brand</span><span>✓ Approval workflow</span><span>✓ Role-based access</span><span>✓ Responsive</span></div>
       </div>
-
-      <section className="section ledger-section">
-        <div className="section-head"><div><div className="eyebrow">Operational ledger</div><h2>Aktivitas terbaru</h2></div><button className="text-button" onClick={() => router.push('/transactions')}>Lihat semua →</button></div>
-        <div className="table-wrap"><table><thead><tr><th>Waktu</th><th>Tipe</th><th>Transaksi</th><th>Kategori</th><th className="amount-col">Nominal</th></tr></thead><tbody>
-          {data.transaksi_terbaru.map(t => <tr key={t.transaction_id}><td>{t.tanggal} <span className="muted">{t.jam}</span></td><td><span className={`tag ${t.type}`}>{t.type === 'income' ? 'PEMASUKAN' : 'PENGELUARAN'}</span></td><td><strong>{String(t.nama_transaksi || t.nama_pengeluaran || '-')}</strong></td><td>{t.kategori || '-'}</td><td className="amount-col"><strong className={t.type === 'income' ? 'income-text' : 'expense-text'}>{t.type === 'income' ? '+' : '-'}{formatRupiah(t.nominal)}</strong></td></tr>)}
-          {!data.transaksi_terbaru.length && <tr><td colSpan={5} className="muted empty">Belum ada transaksi.</td></tr>}
-        </tbody></table></div>
-      </section>
-    </>}
-  </div>;
+      <div className="landing-visual" aria-hidden="true">
+        <div className="dashboard-preview"><div className="preview-top"><span className="preview-dot"/><span/><span/><b>TCC FINANCE</b></div><div className="preview-body"><div className="preview-sidebar"><i/><i/><i/><i/><i/></div><div className="preview-main"><small>NET CASH</small><strong>Rp8.500.000</strong><div className="preview-chart"><span style={{height:'35%'}}/><span style={{height:'52%'}}/><span style={{height:'44%'}}/><span style={{height:'70%'}}/><span style={{height:'61%'}}/><span style={{height:'88%'}}/><span style={{height:'76%'}}/></div><div className="preview-row"><span/><span/><span/></div></div></div></div>
+      </div>
+    </section>
+    <section id="features" className="landing-features"><div className="section-head"><div><div className="eyebrow">Built for operations</div><h2>Semua yang penting, tanpa UI yang berantakan.</h2></div></div><div className="feature-grid">
+      {[
+        ['◉','Cash Control','Pantau saldo sistem, saldo aktual, income, expense dan rekonsiliasi per brand.'],
+        ['✓','Approval Center','Admin mengajukan. Super Admin memeriksa, ACC, menolak atau membatalkan.'],
+        ['◆','Event Finance','Kelola game apa pun, jumlah tim fleksibel, budget, registrasi dan prize pool.'],
+        ['⌁','Access Control','Super Admin menentukan Admin mana yang boleh melihat brand dan fitur tertentu.'],
+        ['↗','Analytics','Cash flow, income vs expense, budget usage dan performa event dalam grafik.'],
+        ['▣','Responsive','Desktop, laptop, tablet, iPad, iPhone dan Android tetap rapi.']
+      ].map(([icon,title,desc])=><article className="feature-card" key={title}><span className="feature-icon">{icon}</span><h3>{title}</h3><p>{desc}</p></article>)}
+    </div></section>
+    <section className="landing-bottom"><div><div className="eyebrow">Secure by design</div><h2>Super Admin mengontrol akses. Admin hanya melihat data yang memang diberikan.</h2></div><Link className="btn" href={target}>{role?'Masuk sekarang':'Login'}</Link></section>
+  </main>
 }

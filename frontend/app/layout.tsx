@@ -1,25 +1,26 @@
-import './globals.css';
+import Link from 'next/link';
 import Navigation from '@/components/common/Navigation';
+import './globals.css';
 
 export const metadata = {
-  title: 'TCC Finance — Command Center',
-  description: 'Multi-brand financial and event management platform untuk TCC',
+  title: 'TCC Finance — Secure Command Center',
+  description: 'Secure multi-brand financial command center untuk TCC',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="id">
       <body>
-        <div className="app-frame">
-          <Navigation />
-          <div className="app-content">
-            <header className="mobile-topbar">
-              <div><strong>TCC FINANCE</strong><span>Command Center</span></div>
-              <div className="mobile-topbar-status"><span className="status-dot"/> Secure</div>
-            </header>
-            <main className="main-content">{children}</main>
-            <footer className="footer">TCC Finance · Secure operational ledger · Google Sheets backend</footer>
-          </div>
+        <div className="shell">
+          <header className="topbar">
+            <Link href="/" className="brand" aria-label="TCC Finance">
+              <span className="brand-mark">T</span>
+              <span className="brand-copy"><strong>TCC FINANCE</strong><span>Financial Command Center</span></span>
+            </Link>
+            <Navigation />
+          </header>
+          <main>{children}</main>
+          <footer className="footer">TCC Finance • Secure operational ledger • Data powered by Google Sheets</footer>
         </div>
       </body>
     </html>

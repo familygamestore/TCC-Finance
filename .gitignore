@@ -1,6 +1,6 @@
-node_modules/
-.next/
 .env
 .env.local
 .env.*.local
-out/
+node_modules/
+.next/
+*.log
