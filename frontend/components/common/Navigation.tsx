@@ -13,10 +13,15 @@ const superItems: NavItem[] = [
   { href: '/requests', label: 'Pengajuan', icon: '✓', hint: 'Approval queue' },
   { href: '/events', label: 'Event Hub', icon: '◆', hint: 'Event & budget' },
   { href: '/super-admin', label: 'Administration', icon: '⚙', hint: 'Users & settings' },
+  { href: '/access-control', label: 'Access Control', icon: '⌘', hint: 'Brand & permission' },
+  { href: '/access-control', label: 'Access Control', icon: '⌘', hint: 'Brand & permission' },
 ];
 const adminItems: NavItem[] = [
+  { href: '/', label: 'Overview', icon: '⌂', hint: 'Ringkasan workspace' },
+  { href: '/cash', label: 'Kas & Brand', icon: '₽', hint: 'Brand yang diizinkan' },
+  { href: '/transactions', label: 'Transaksi', icon: '↕', hint: 'Ledger sesuai akses' },
   { href: '/requests', label: 'Pengajuan Saya', icon: '✓', hint: 'Ajukan & pantau' },
-  { href: '/events', label: 'Event', icon: '◆', hint: 'Kelola event' },
+  { href: '/events', label: 'Event', icon: '◆', hint: 'Event sesuai akses' },
 ];
 
 export default function Navigation() {
@@ -43,6 +48,7 @@ export default function Navigation() {
   useEffect(() => setOpen(false), [pathname]);
 
   const items = useMemo(() => role === 'SUPER_ADMIN' ? superItems : role === 'ADMIN' ? adminItems : [], [role]);
+  if (!role && pathname === '/') return null;
   const initials = (userName || (role === 'SUPER_ADMIN' ? 'Super Admin' : role === 'ADMIN' ? 'Admin' : 'TCC')).split(/\s+/).map(x => x[0]).join('').slice(0, 2).toUpperCase();
   async function logout() { try { if (role) await api.logout(); } catch {} clearSuperAdminSession(); router.push('/admin'); }
   function toggleCollapsed() { setCollapsed(v => { const next = !v; localStorage.setItem('tcc_sidebar_collapsed', next ? '1' : '0'); return next; }); }

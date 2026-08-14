@@ -1,119 +1,165 @@
-# TCC Finance MultiBrand Secure Workflow v5.0
+# TCC Finance V15 — Ultra Enterprise Command Center
 
-Financial command center TCC dengan Next.js, Vercel, Google Apps Script, Google Sheets, dan workflow approval Super Admin.
+TCC Finance V15 adalah upgrade menyeluruh dari V10/V14 untuk pengelolaan multi-brand finance, kas, transaksi, pengajuan, event, approval, analytics, user management, dan access control berbasis Google Sheets + Google Apps Script + Next.js.
 
-## Upgrade v5
+## Prinsip V15
 
-- Super Admin session diverifikasi ulang dari backend.
-- Dashboard, transaksi, event, cash, report, audit log, dan users tidak lagi menjadi endpoint publik.
-- Requester tidak lagi bisa membaca seluruh riwayat pengajuan. Setiap pengajuan memiliki `request_access_token` yang hanya disimpan di browser requester dan hash-nya disimpan di Spreadsheet.
-- `REQUESTS` otomatis mendapat kolom `access_token_hash` saat upgrade.
-- Approval menggunakan `LockService` agar dua klik ACC bersamaan tidak membuat final transaction/event ganda.
-- Password default tidak lagi ditulis plaintext di frontend atau source backend. Script Properties menggunakan SHA-256 hash yang diberikan untuk akun Super Admin.
-- Password baru minimal 12 karakter dan harus berbeda dari password lama.
-- Field sensitif seperti ID transaksi, timestamp, dan brand tidak dapat diubah melalui payload edit biasa.
-- Validasi brand, kategori, nominal, tanggal, status event, nama file, dan MIME upload diperketat.
-- Upload bukti dibatasi ke JPG/PNG/WEBP/PDF dan maksimal 8 MB serta memerlukan access token pengajuan.
-- CSS disatukan ke satu design system dark sehingga tidak ada konflik background/teks/form antara komponen lama dan baru.
-- Layout responsif untuk desktop, tablet, dan mobile.
-- Proxy Next.js hanya menerima GET/POST, memvalidasi URL Apps Script, membatasi payload, dan mematikan caching response sensitif.
+- Super Admin = akses mutlak ke seluruh brand, kas, transaksi, pengajuan, event, users, settings, audit, dan permission.
+- Admin = hanya melihat brand yang secara eksplisit diberikan oleh Super Admin.
+- Admin tidak mendapatkan semua brand secara otomatis.
+- Pengajuan Admin masuk PENDING dan diproses Super Admin.
+- Akses brand dan permission diperiksa di backend, bukan hanya disembunyikan di UI.
+- UI responsive untuk HP 320px+, Android, iPhone, iPad, tablet, laptop, desktop, dan wide monitor.
+- Dark/Light mode dan sidebar collapse tersimpan di browser.
 
-## Role
+## Fitur
 
-### Admin biasa
+### Workspace
+- Landing page sebelum login.
+- Dashboard command center.
+- Cash overview.
+- Income/expense summary.
+- Event overview.
+- Quick actions.
+- Responsive navigation drawer.
 
-- Membuat pengajuan Tournament
-- Membuat pengajuan Sponsor
-- Membuat pengajuan Acara
-- Mengajukan Income
-- Mengajukan Expense
-- Melihat status pengajuan miliknya sendiri
+### Finance
+- Multi-brand cash account.
+- Saldo awal, saldo sistem, saldo aktual.
+- Rekonsiliasi dan cash adjustment.
+- Transaction ledger.
+- Kategori dan payment method.
+- Format nominal Rupiah.
+- Quick amount selector.
 
-Admin biasa tidak mempunyai akses backend ke transaksi final, event final, cash, report, audit log, users, brand management, atau aksi edit/hapus.
+### Pengajuan
+- Income.
+- Expense.
+- Event/tournament.
+- Sponsor.
+- Status PENDING / APPROVED / REJECTED.
+- Approval Super Admin.
+- Access token untuk tracking pengajuan.
 
-### Super Admin
+### Event
+- Game bebas/custom.
+- Kategori bebas.
+- Jumlah tim/peserta.
+- Biaya registrasi.
+- Budget.
+- Prize pool.
+- Sponsor revenue.
+- Event budget summary.
 
-Setelah login, Super Admin dapat:
+### Access Control
+Super Admin dapat memilih:
 
-- ACC / Tolak pengajuan
-- Melihat transaksi
-- Edit / hapus transaksi
-- Melihat / edit / hapus event
-- Membuat brand
-- Mengatur saldo awal
-- Mengatur WhatsApp approval
-- Mengganti password
-- Melihat data operasional yang dilindungi
+`Admin → Brand → Permission`
 
-## Password
+Permission tersedia:
 
-Password plaintext tidak ditanam di frontend.
+- view_cash
+- view_transactions
+- view_events
+- create_request
+- view_reports
 
-Hash default yang digunakan Apps Script:
+Mencabut semua permission akan menghapus assignment brand tersebut.
 
-`364ca129d77d2ac1fce9f7ca2063519f12f831c531bcad63e9cd6e861e931803`
+### Security
+- Server-side session validation.
+- Session expiration.
+- Login attempt limiting.
+- Super Admin protected endpoints.
+- Brand permission checks.
+- Audit log.
+- Password minimum 12 karakter untuk account management.
+- Admin baru tidak memperoleh semua brand otomatis.
 
-Hash tersebut adalah SHA-256 dari password testing yang sebelumnya digunakan. Setelah login, ganti password dari panel Super Admin.
-
-## Upgrade Spreadsheet lama
-
-Jangan membuat Spreadsheet baru.
-
-1. Ganti `apps-script/Code.gs` dengan file v5.
-2. Jalankan `upgradeTCCFinanceV4()` satu kali.
-3. Script akan menambahkan kolom yang belum ada tanpa merusak kolom/data lama.
-4. Pastikan `AUTH_USERS` dan kolom `REQUESTS.access_token_hash` muncul.
-5. Buat **New version** pada deployment Web App.
-6. Update deployment ke versi terbaru.
-
-## Frontend
-
-Masuk ke folder:
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Buka:
+## Struktur
 
 ```text
-http://localhost:3000
+TCC-Finance-V15/
+├── apps-script/Code.gs
+├── docs/spreadsheet-setup.md
+├── docs/spreadsheet-template/
+├── frontend/
+│   ├── app/
+│   ├── components/
+│   ├── hooks/
+│   ├── lib/
+│   ├── types/
+│   └── utils/
+├── vercel.json
+└── README.md
 ```
 
-Untuk Vercel, set Root Directory ke `frontend` dan environment variable:
+## Local Development
 
-```env
+```powershell
+cd frontend
+npm.cmd install
+npm.cmd run typecheck
+npm.cmd run build
+npm.cmd run dev
+```
+
+Open `http://localhost:3000`.
+
+## Apps Script
+
+1. Buka Google Apps Script.
+2. Ganti Code.gs dengan `apps-script/Code.gs`.
+3. Jalankan `setupTCCFinance()` sekali.
+4. Deploy sebagai Web App.
+5. Salin URL `/exec`.
+6. Di Vercel set environment variable:
+
+```text
 NEXT_PUBLIC_APPS_SCRIPT_URL=https://script.google.com/macros/s/DEPLOYMENT_ID/exec
 ```
 
-Build:
+Jika frontend memakai route proxy internal, pastikan route tersebut juga membaca environment variable yang sama.
 
-```bash
+## GitHub → Vercel
+
+Root repository adalah folder project ini. Karena Next.js berada di `frontend`, ada dua pilihan:
+
+### Pilihan A — Vercel Root Directory
+Set:
+
+```text
+Root Directory = frontend
+```
+
+Build command:
+
+```text
 npm run build
 ```
 
-## Testing
+Output Directory biarkan default Next.js.
 
-Urutan pengujian:
+### Pilihan B — Repository root
+Gunakan konfigurasi Vercel yang menjalankan build dari `frontend`. Jangan set Output Directory menjadi `public` karena ini bukan static export.
 
-1. Buka Pusat Pengajuan.
-2. Pilih brand.
-3. Kirim Tournament.
-4. Pastikan status `PENDING`.
-5. Pastikan requester hanya bisa melihat pengajuan miliknya.
-6. Login Super Admin.
-7. Pastikan pengajuan muncul di Approval Center.
-8. ACC.
-9. Pastikan status menjadi `APPROVED`.
-10. Jika WhatsApp sudah dikonfigurasi, pastikan URL WhatsApp dibuat.
-11. Test Sponsor.
-12. Test Acara dan pastikan event final dibuat setelah ACC.
-13. Test Expense.
-14. Test Income.
-15. Pastikan transaksi final baru dibuat setelah ACC.
-16. Pastikan Admin tidak dapat mengakses endpoint transaksi tanpa session Super Admin.
-17. Pastikan edit/hapus hanya berhasil dengan session Super Admin.
-18. Ganti password Super Admin.
-19. Logout dan pastikan token lama tidak dapat digunakan.
+## Environment
+
+Salin `.env.example` menjadi `.env.local` jika perlu. Jangan commit secret.
+
+## Verifikasi sebelum production
+
+```powershell
+npm.cmd run typecheck
+npm.cmd run build
+```
+
+Build harus bersih sebelum push ke GitHub.
+
+## Catatan database
+
+Spreadsheet adalah source of truth. Jalankan setup Apps Script sebelum frontend mencoba membaca dashboard, brand, cash, transaksi, event, atau request.
+
+## Versi
+
+V15 — Ultra Enterprise Command Center.

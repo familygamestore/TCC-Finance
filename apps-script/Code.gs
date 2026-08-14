@@ -94,7 +94,7 @@ function setupTCCFinanceV8_() {
 function getSheetSchemasV8_() {
   const base = getSheetSchemas_();
   return Object.assign({}, base, {
-    BRAND_USERS:['id','brand_id','user_id','role','status','created_at'],
+    BRAND_USERS:['id','brand_id','user_id','role','permissions','status','created_at'],
     EVENT_BUDGETS:['budget_id','event_id','brand_id','registration_revenue','sponsor_revenue','other_income','prize_pool','operational_budget','other_expense','expected_profit','created_at','updated_at'],
     NOTIFICATIONS:['notification_id','user_id','brand_id','type','title','message','status','created_at'],
     SETTINGS:['key','value','description','updated_at','updated_by']
@@ -202,19 +202,20 @@ function doGet(e) {
     switch (action) {
       case 'config': { const tok=String(e.parameter.token||''); const c=getConfig_(); if(tok && getSession_(tok)) result={whatsapp_number:c.whatsappNumber,whatsapp_number_configured:!!c.whatsappNumber}; else result={whatsapp_number_configured:!!c.whatsappNumber}; break; }
       case 'session': result = sessionInfo_(e.parameter); break;
-      case 'dashboard': requireTokenParam_(e.parameter); result = calculateDashboard(); break;
-      case 'transactions': requireTokenParam_(e.parameter); result = getTransactions(e.parameter); break;
-      case 'events': requireTokenParam_(e.parameter); result = getEvents(e.parameter); break;
-      case 'event_detail': requireTokenParam_(e.parameter); result = getEventDetail(e.parameter.event_id); break;
+      case 'dashboard': { const session=requireSession_({token:String(e.parameter.token||'')}); result = calculateDashboardForSession_(session); break; }
+      case 'transactions': { const session=requireSession_({token:String(e.parameter.token||'')}); result = getTransactionsForSession_(session,e.parameter); break; }
+      case 'events': { const session=requireSession_({token:String(e.parameter.token||'')}); result = getEventsForSession_(session,e.parameter); break; }
+      case 'event_detail': { const session=requireSession_({token:String(e.parameter.token||'')}); const ev=getEventDetail(e.parameter.event_id); assertBrandAccess_(session,ev.brand_id); result=ev; break; }
       case 'categories': result = getActiveCategories_(); break;
       case 'payment_methods': result = getActivePaymentMethods_(); break;
-      case 'report': requireTokenParam_(e.parameter); result = getReport(e.parameter); break;
-      case 'audit_logs': requireTokenParam_(e.parameter); result = getSheetAsObjects_(getSheet_(SHEETS.AUDIT_LOGS)).reverse(); break;
+      case 'report': { const session=requireSession_({token:String(e.parameter.token||'')}); result = getReportForSession_(session,e.parameter); break; }
+      case 'audit_logs': requireSuperAdmin_({token:String(e.parameter.token||'')}); result = getSheetAsObjects_(getSheet_(SHEETS.AUDIT_LOGS)).reverse(); break;
       case 'brands': result = getBrandsForSession_(e.parameter); break;
       case 'cash': result = getCashOverviewForSession_(e.parameter); break;
       case 'requests': result = getRequests(e.parameter); break;
       case 'request_status': result = getRequestStatus_(e.parameter.request_id, e.parameter.request_access_token, e.parameter.token); break;
       case 'users': requireSuperAdmin_({token:String(e.parameter.token||'')}); result = getSheetAsObjects_(getSheet_(SHEETS.USERS)); break;
+      case 'access': requireSuperAdmin_({token:String(e.parameter.token||'')}); result = getAccessControl_(); break;
       default: return jsonResponse({ success:false, error:'Unknown action: ' + action });
     }
     return jsonResponse({ success:true, data:result });
@@ -241,9 +242,9 @@ function handleCreate_(action, body) {
   switch (action) {
     case 'request': return createFinanceRequest_(body);
     case 'upload_bukti': return uploadBukti_(body);
-    case 'income': requireSuperAdmin_(body); return createTransaction_(SHEETS.INCOME, body, 'IN');
-    case 'expense': requireSuperAdmin_(body); return createTransaction_(SHEETS.EXPENSE, body, 'EX');
-    case 'event': requireSuperAdmin_(body); return createEvent_(body);
+    case 'income': return createFinanceRequest_(Object.assign({},body,{type:'INCOME'}));
+    case 'expense': return createFinanceRequest_(Object.assign({},body,{type:'EXPENSE'}));
+    case 'event': return createFinanceRequest_(Object.assign({},body,{type:'EVENT'}));
     case 'brand': requireSuperAdmin_(body); return createBrand_(body);
     case 'cash_setup': requireSuperAdmin_(body); return setupCash_(body);
     case 'cash_adjustment': requireSuperAdmin_(body); return createCashAdjustment_(body);
@@ -251,6 +252,7 @@ function handleCreate_(action, body) {
   }
 }
 function handleUpdate_(action, body) {
+  if (action === 'access') return updateBrandAccess_(body);
   const session = requireSuperAdmin_(body);
   const actor = session.email;
   switch (action) {
@@ -427,7 +429,7 @@ function getRequests(params) {
   let rows = getSheetAsObjects_(getSheet_(SHEETS.REQUESTS)).reverse();
   if (token) {
     const auth = requireSession_({token});
-    if (auth.role === 'ADMIN') rows = rows.filter(r => String(r.user_id) === String(auth.userId || auth.email));
+    if (auth.role === 'ADMIN') rows = rows.filter(r => String(r.user_id) === String(auth.userId || auth.email) || hasPermission_(auth,r.brand_id,'view_requests'));
   }
   const status = String(params.status || '').toUpperCase();
   const type = String(params.type || '').toUpperCase();
@@ -456,7 +458,7 @@ function createFinanceRequest_(body) {
 
   const brandId = String(body.brand_id || '').trim();
   if (!brandId || !getActiveBrand_(brandId)) throw new Error('Brand tidak valid atau tidak aktif.');
-  if (auth) assertBrandAccess_(auth, brandId);
+  if (auth) assertPermission_(auth, brandId, 'create_request');
 
   const name = cleanText_(body.nama, 160);
   if (!name) throw new Error('Nama/judul pengajuan wajib diisi.');
@@ -629,13 +631,42 @@ function finalizeApprovedFinance_(obj,body){const common={tanggal:formatDate_(ne
 function finalizeApprovedEvent_(obj,body){return createEvent_({user:body.user,brand_id:obj.brand_id,nama_event:obj.nama,game:obj.game,kategori_event:obj.kategori_event,sistem_turnamen:obj.sistem_turnamen,tanggal_mulai:obj.tanggal_mulai,tanggal_selesai:obj.tanggal_selesai,jumlah_peserta:obj.jumlah_peserta,biaya_registrasi:obj.biaya_registrasi,target_pemasukan:obj.target_pemasukan,budget:obj.budget,prize_pool:obj.prize_pool,sponsor_revenue:obj.sponsor_revenue,other_income:obj.other_income,other_expense:obj.other_expense,status:'upcoming'});}
 function cancelFinanceRequest_(body){return updateRequestStatus_(Object.assign({},body,{status:'CANCELLED'}));}
 
-function getUserBrandIds_(session) {
-  if (!session) return [];
-  if (session.role === 'SUPER_ADMIN') return getSheetAsObjects_(getSheet_(SHEETS.BRANDS)).filter(r=>String(r.status).toUpperCase()!=='INACTIVE').map(r=>String(r.brand_id));
+const DEFAULT_ADMIN_PERMISSIONS_=['view_cash','view_transactions','view_events','create_request'];
+function getUserBrandAccess_(session){
+  if(session.role==='SUPER_ADMIN') return getSheetAsObjects_(getSheet_(SHEETS.BRANDS)).filter(r=>String(r.status).toUpperCase()!=='INACTIVE').map(b=>({brand_id:String(b.brand_id),permissions:['*']}));
   const rows=getSheetAsObjects_(getSheet_(SHEETS.BRAND_USERS));
   const uid=String(session.userId||session.email);
-  return rows.filter(r=>String(r.user_id)===uid && String(r.status).toUpperCase()!=='INACTIVE').map(r=>String(r.brand_id));
+  return rows.filter(r=>String(r.user_id)===uid && String(r.status).toUpperCase()!=='INACTIVE').map(r=>({brand_id:String(r.brand_id),permissions:parsePermissions_(r.permissions)}));
 }
+function parsePermissions_(raw){try{const a=JSON.parse(String(raw||''));return Array.isArray(a)&&a.length?a.map(String):DEFAULT_ADMIN_PERMISSIONS_.slice();}catch(e){return DEFAULT_ADMIN_PERMISSIONS_.slice();}}
+function hasPermission_(session,brandId,permission){if(session.role==='SUPER_ADMIN')return true;const row=getUserBrandAccess_(session).find(x=>x.brand_id===String(brandId));return !!row && (row.permissions.includes('*')||row.permissions.includes(permission));}
+function assertPermission_(session,brandId,permission){if(!hasPermission_(session,brandId,permission))throw new Error('Anda tidak memiliki permission '+permission+' untuk brand ini.');}
+function getAccessControl_(){
+ const users=getSheetAsObjects_(getSheet_(SHEETS.AUTH_USERS)).filter(u=>String(u.role).toUpperCase()==='ADMIN').map(u=>({id:u.id,email:u.email,status:u.status}));
+ const brands=getSheetAsObjects_(getSheet_(SHEETS.BRANDS)).filter(b=>String(b.status).toUpperCase()!=='INACTIVE');
+ const access=getSheetAsObjects_(getSheet_(SHEETS.BRAND_USERS)).map(r=>({id:r.id,user_id:String(r.user_id),brand_id:String(r.brand_id),permissions:parsePermissions_(r.permissions),status:r.status}));
+ return {users,brands,access,permission_catalog:[['view_cash','Lihat Kas'],['view_transactions','Lihat Transaksi'],['view_events','Lihat Event'],['create_request','Buat Pengajuan'],['view_reports','Lihat Report']]};
+}
+function updateBrandAccess_(body){
+ const session=requireSuperAdmin_(body); const userId=String(body.user_id||''); const brandId=String(body.brand_id||'');
+ if(!userId||!brandId)throw new Error('User dan brand wajib diisi.');
+ if(!getActiveBrand_(brandId))throw new Error('Brand tidak aktif.');
+ const sh=getSheet_(SHEETS.BRAND_USERS), headers=getHeaders_(sh), rows=getSheetAsObjects_(sh);
+ const perms=Array.isArray(body.permissions)?body.permissions.map(String):[]; const existing=rows.find(r=>String(r.user_id)===userId&&String(r.brand_id)===brandId);
+ if(!perms.length){if(existing){const data=sh.getDataRange().getValues(),hc=headers.indexOf('id');for(let i=1;i<data.length;i++)if(String(data[i][hc])===String(existing.id)){sh.deleteRow(i+1);break;}} logAudit_(session.email,'REVOKE_BRAND_ACCESS',userId+'|'+brandId,'Permission dicabut');return {updated:true,revoked:true};}
+ if(existing){const data=sh.getDataRange().getValues(),hc=headers.indexOf('id');for(let i=1;i<data.length;i++)if(String(data[i][hc])===String(existing.id)){const pc=headers.indexOf('permissions'),sc=headers.indexOf('status');if(pc>=0)sh.getRange(i+1,pc+1).setValue(JSON.stringify(perms));if(sc>=0)sh.getRange(i+1,sc+1).setValue('ACTIVE');break;}}
+ else appendRowFromObject(sh,headers,{id:generateId_('BU'),brand_id:brandId,user_id:userId,role:'ADMIN',permissions:JSON.stringify(perms),status:'ACTIVE',created_at:formatDateTime_(new Date())});
+ logAudit_(session.email,'UPDATE_BRAND_ACCESS',userId+'|'+brandId,JSON.stringify(perms)); return {updated:true};
+}
+function getTransactionsForSession_(session,params){let rows=getTransactions(params);if(session.role==='SUPER_ADMIN')return rows;return rows.filter(r=>hasPermission_(session,r.brand_id,'view_transactions'));}
+function getEventsForSession_(session,params){let rows=getEvents(params);if(session.role==='SUPER_ADMIN')return rows;return rows.filter(r=>hasPermission_(session,r.brand_id,'view_events'));}
+function calculateDashboardForSession_(session){
+ const brands=getCashOverviewForSession_({token:findTokenForSession_(session)}); const income=brands.reduce((s,b)=>s+Number(b.total_income||0),0), expense=brands.reduce((s,b)=>s+Number(b.total_expense||0),0); const events=getEventsForSession_(session,{}), tx=getTransactionsForSession_(session,{}); return {saldo:brands.reduce((s,b)=>s+Number(b.saldo_sistem||0),0),total_income:income,total_expense:expense,jumlah_event:events.length,jumlah_transaksi:tx.length,transaksi_terbaru:tx.slice(0,8),cash_by_brand:brands};
+}
+function findTokenForSession_(session){return session.__token||'';}
+function getReportForSession_(session,params){const tx=getTransactionsForSession_(session,params||{}),inc=tx.filter(x=>x.type==='income'),exp=tx.filter(x=>x.type==='expense');return {total_income:sumField_(inc,'nominal'),total_expense:sumField_(exp,'nominal'),saldo:sumField_(inc,'nominal')-sumField_(exp,'nominal'),income_by_category:groupSum_(inc,'kategori','nominal'),expense_by_category:groupSum_(exp,'kategori','nominal'),jumlah_transaksi:tx.length};}
+
+function getUserBrandIds_(session) { return getUserBrandAccess_(session).map(x=>String(x.brand_id)); }
 function requireAdminOrSuper_(params) { const session=requireSession_(params); return session; }
 function assertBrandAccess_(session, brandId) {
   if (session.role==='SUPER_ADMIN') return true;
@@ -652,7 +683,7 @@ function getCashOverviewForSession_(params) {
   const rows=getCashOverview();
   if(session.role==='SUPER_ADMIN') return rows;
   const ids=getUserBrandIds_(session);
-  return rows.filter(r=>ids.includes(String(r.brand_id)));
+  return rows.filter(r=>ids.includes(String(r.brand_id)) && hasPermission_(session,r.brand_id,'view_cash'));
 }
 function assignDefaultBrandAccess_(userId) {
   const brands=getSheetAsObjects_(getSheet_(SHEETS.BRANDS)).filter(r=>String(r.status).toUpperCase()!=='INACTIVE');
@@ -777,7 +808,7 @@ function getSession_(token) {
       CacheService.getScriptCache().remove(PROP_SESSION_PREFIX + value);
       return null;
     }
-    return session;
+    session.__token=value; return session;
   } catch (e) {
     return null;
   }
@@ -831,9 +862,10 @@ function createAuthUser_(body) {
   const us=getSheet_(SHEETS.USERS); appendRowFromObject(us,getHeaders_(us),{id,nama:name,email,role:'ADMIN',status:'ACTIVE',created_at:formatDateTime_(new Date())});
   const requestedBrands = Array.isArray(body.brand_ids) ? body.brand_ids.map(String) : [];
   const activeBrands = getSheetAsObjects_(getSheet_(SHEETS.BRANDS)).filter(r=>String(r.status).toUpperCase()!=='INACTIVE');
-  const selected = requestedBrands.length ? activeBrands.filter(b=>requestedBrands.includes(String(b.brand_id))) : activeBrands;
+  const selected = activeBrands.filter(b=>requestedBrands.includes(String(b.brand_id)));
+  const permissions = Array.isArray(body.permissions) && body.permissions.length ? body.permissions : ['view_cash','view_transactions','view_events','create_request'];
   const bu=getSheet_(SHEETS.BRAND_USERS);
-  selected.forEach(b=>appendRowFromObject(bu,getHeaders_(bu),{id:generateId_('BU'),brand_id:b.brand_id,user_id:id,role:'ADMIN',status:'ACTIVE',created_at:formatDateTime_(new Date())}));
+  selected.forEach(b=>appendRowFromObject(bu,getHeaders_(bu),{id:generateId_('BU'),brand_id:b.brand_id,user_id:id,role:'ADMIN',permissions:JSON.stringify(permissions),status:'ACTIVE',created_at:formatDateTime_(new Date())}));
   logAudit_(session.email,'CREATE_ADMIN',id,'Membuat akun admin '+email);
   return {id,email,role:'ADMIN',status:'ACTIVE'};
 }
