@@ -1,1 +1,1 @@
-id,brand_id,user_id,role,status,view_cash,view_transactions,view_requests,view_events,view_reports,create_request,created_at
+id,brand_id,user_id,role,status

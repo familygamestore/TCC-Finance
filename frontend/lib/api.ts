@@ -82,8 +82,6 @@ export const api = {
   getRequests: (params:Record<string,string>={}, auth=false) => apiGet<FinanceRequest[]>('requests',params,auth),
   getRequestStatus: (id:string) => apiGet<FinanceRequest>('request_status',{request_id:id,request_access_token:getRequestAccessToken()}),
   getUsers: () => apiGet<Record<string,unknown>[]>('users',{},true),
-  getBrandAccess: () => apiGet<Record<string,unknown>[]>('brand_access',{},true),
-  updateBrandAccess: (data:Record<string,unknown>) => apiSend('brand_access',data,'PUT',true),
   createAdmin: (data:Record<string,unknown>) => apiSend('auth_user',data,'POST',true),
   createRequest: (data:Record<string,unknown>) => apiSend<{request_id:string;status:string;type:string;request_access_token:string}>('request',data,'POST',!!getAuthToken()),
   approveRequest: (id:string,status:'APPROVED'|'REJECTED',reason='') => apiSend<{request_id:string;status:string;whatsapp_url:string}>('request',{id,status,reason},'PUT',true),
