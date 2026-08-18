@@ -14,7 +14,6 @@ const superItems: NavItem[] = [
   { href: '/events', label: 'Event Hub', icon: '◆', hint: 'Event & budget' },
   { href: '/super-admin', label: 'Administration', icon: '⚙', hint: 'Users & settings' },
   { href: '/access-control', label: 'Access Control', icon: '⌘', hint: 'Brand & permission' },
-  { href: '/access-control', label: 'Access Control', icon: '⌘', hint: 'Brand & permission' },
 ];
 const adminItems: NavItem[] = [
   { href: '/', label: 'Overview', icon: '⌂', hint: 'Ringkasan workspace' },
@@ -59,7 +58,6 @@ export default function Navigation() {
     <aside className={`app-sidebar ${collapsed ? 'collapsed' : ''} ${open ? 'open' : ''}`}>
       <div className="sidebar-top">
         <Link href="/" className="brand" aria-label="TCC Finance"><span className="brand-mark">T</span><span className="brand-copy"><strong>TCC FINANCE</strong><span>Finance Command Center</span></span></Link>
-        <button className="collapse-button" type="button" onClick={toggleCollapsed} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>{collapsed ? '→' : '←'}</button>
       </div>
       {role && <div className="workspace-switcher"><span className="workspace-dot"/><span><small>WORKSPACE</small><strong>{role === 'SUPER_ADMIN' ? 'All Brands' : 'Assigned Brands'}</strong></span><span className="chevron">⌄</span></div>}
       <nav className="sidebar-nav" aria-label="Navigasi utama">
@@ -68,8 +66,12 @@ export default function Navigation() {
         {!role && <><div className="nav-section-title">Access</div><Link href="/admin" className={`side-link ${pathname === '/admin' ? 'active' : ''}`}><span className="nav-icon">↪</span><span className="side-link-copy"><strong>Admin</strong><small>Workspace login</small></span></Link><Link href="/super-admin" className={`side-link ${pathname === '/super-admin' ? 'active' : ''}`}><span className="nav-icon">♙</span><span className="side-link-copy"><strong>Super Admin</strong><small>Secure control room</small></span></Link></>}
       </nav>
       <div className="sidebar-bottom">
-        <button className="theme-toggle" type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title={collapsed ? 'Ganti tema' : undefined}><span>{theme === 'dark' ? '☀' : '☾'}</span><span className="theme-copy">{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span></button>
-        {role ? <><div className="profile-card"><div className="account-avatar">{initials}</div><div className="account-copy"><strong>{userName || 'TCC User'}</strong><span>{role === 'SUPER_ADMIN' ? 'Super Admin' : 'Admin'}</span></div></div><button className="logout-button" type="button" onClick={() => void logout()}><span>↪</span><span>Keluar</span></button></> : <div className="guest-card"><strong>Local workspace</strong><span>Silakan masuk untuk membuka data.</span></div>}
+        {role ? <div className="profile-card"><div className={`account-avatar ${role === 'SUPER_ADMIN' ? 'is-super' : ''}`}>{initials}</div><div className="account-copy"><strong>{userName || 'TCC User'}</strong><span className={`role-badge ${role === 'SUPER_ADMIN' ? 'super' : 'admin'}`}>{role === 'SUPER_ADMIN' ? 'Super Admin' : 'Admin'}</span></div></div> : <div className="guest-card"><strong>Local workspace</strong><span>Silakan masuk untuk membuka data.</span></div>}
+        <div className="sidebar-utility-row">
+          <button className="theme-toggle" type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title={collapsed ? 'Ganti tema' : undefined} aria-label={theme === 'dark' ? 'Aktifkan light mode' : 'Aktifkan dark mode'}><span className="theme-toggle-icon">{theme === 'dark' ? '☀' : '☾'}</span><span className="theme-copy">{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span></button>
+          <button className="collapse-button" type="button" onClick={toggleCollapsed} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} title={collapsed ? 'Expand sidebar' : undefined}><span className="collapse-button-icon">{collapsed ? '→' : '←'}</span><span className="collapse-button-label">Collapse</span></button>
+        </div>
+        {role && <button className="logout-button" type="button" onClick={() => void logout()}><span>↪</span><span>Keluar</span></button>}
       </div>
     </aside>
   </>;

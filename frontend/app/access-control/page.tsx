@@ -1,11 +1,12 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { api, getAuthRole } from '@/lib/api';
-const perms=[['view_cash','Lihat Kas'],['view_transactions','Lihat Transaksi'],['view_events','Lihat Event'],['create_request','Buat Pengajuan'],['view_reports','Lihat Report']];
+const FALLBACK_PERMS=[['view_cash','Lihat Kas'],['view_cash_history','Lihat Riwayat Kas'],['view_transactions','Lihat Transaksi'],['export_transactions','Export Transaksi'],['view_events','Lihat Event'],['view_event_finance','Lihat Keuangan Event'],['create_request','Buat Pengajuan'],['view_requests','Lihat Pengajuan'],['view_reports','Lihat Report'],['export_reports','Export Report']];
 export default function AccessControlPage(){
  const [role,setRole]=useState(''); const [data,setData]=useState<any>(null); const [user,setUser]=useState(''); const [brand,setBrand]=useState(''); const [selected,setSelected]=useState<string[]>([]); const [msg,setMsg]=useState(''); const [busy,setBusy]=useState(false);
  async function load(){try{setData(await api.getAccessControl())}catch(e){setMsg(e instanceof Error?e.message:'Gagal memuat Access Control')}}
  useEffect(()=>{const r=getAuthRole();setRole(r);if(r==='SUPER_ADMIN')void load()},[]);
+ const perms=(data?.permission_catalog?.length?data.permission_catalog:FALLBACK_PERMS) as string[][];
  const current=useMemo(()=>data?.access?.find((x:any)=>String(x.user_id)===String(user)&&String(x.brand_id)===String(brand)),[data,user,brand]);
  useEffect(()=>{setSelected(current?.permissions||[])},[current?.id]);
  if(role!=='SUPER_ADMIN')return <div className="access-denied"><div className="eyebrow">Restricted</div><h1>Super Admin Only</h1><p>Access Control hanya dapat dibuka oleh Super Admin.</p></div>;

@@ -12,10 +12,16 @@
 const DEFAULT_TIMEZONE = 'Asia/Jakarta';
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 const SESSION_TTL_SECONDS = 6 * 60 * 60;
+// SECURITY NOTE: this is a bootstrap-only hash for the very first Super Admin login.
+// must_change_password is forced to TRUE for this account (see setupTCCFinance_ below),
+// so the account cannot be used until the password is changed. Rotate it immediately
+// after your first deploy by logging in once and setting a new password.
 const DEFAULT_SUPER_ADMIN_EMAIL = 'superadmin@tcc.local';
 const DEFAULT_SUPER_ADMIN_PASSWORD_HASH = 'd432236a62050dc92d3c040e98d2ccc9ba05253b856e35fa85bfe1b662b3a143';
 const DEFAULT_ADMIN_EMAIL = 'admin@tcc.local';
-const DEFAULT_ADMIN_PASSWORD_HASH = 'd432236a62050dc92d3c040e98d2ccc9ba05253b856e35fa85bfe1b662b3a143';
+// (DEFAULT_ADMIN_PASSWORD_HASH was declared but never used anywhere in this file — removed.
+// Regular Admin accounts are always created with an explicit, unique password via
+// createAdmin/AUTH_USERS, never from a hardcoded default.)
 
 const PROP_SPREADSHEET_ID = 'TCC_SPREADSHEET_ID';
 const PROP_DRIVE_FOLDER_ID = 'TCC_DRIVE_FOLDER_ID';
@@ -74,7 +80,7 @@ function setupTCCFinance() {
     spreadsheet_id: ss.getId(), spreadsheet_url: ss.getUrl(),
     drive_folder_id: folder.getId(), drive_folder_url: folder.getUrl(),
     super_admin_email: props.getProperty(PROP_SUPER_ADMIN_EMAIL),
-    message: 'TCC Finance V6 berhasil di-setup/di-upgrade. Struktur multi-brand, approval, event universal, dan akses Super Admin dilindungi.'
+    message: 'TCC Finance V23 berhasil di-setup/di-upgrade. Struktur multi-brand, approval, event universal, dan akses Super Admin dilindungi.'
   };
 }
 
@@ -88,7 +94,7 @@ function setupTCCFinanceV8_() {
   Object.keys(schemas).forEach(name => ensureSheetSchema_(ss, name, schemas[name]));
   seedV8Defaults_(ss);
   PropertiesService.getScriptProperties().setProperty('TCC_SCHEMA_VERSION','8');
-  return Object.assign({}, result, {schema_version:'8', message:'TCC Finance V8 berhasil di-upgrade. Security, multi-brand access, event finance, notifications, settings, dan audit diperkuat.'});
+  return Object.assign({}, result, {schema_version:'8', message:'TCC Finance V23 schema compatibility upgrade berhasil dijalankan. Security, multi-brand access, event finance, notifications, settings, dan audit diperkuat.'});
 }
 
 function getSheetSchemasV8_() {
@@ -164,12 +170,58 @@ function seedSuperAdmin_(ss, props) {
 }
 
 function seedDefaultAdmin_(ss) {
+  // Production-safe: never create a shared/default Admin account automatically.
+  // Admin accounts must be created explicitly by Super Admin.
+  return;
+}
+
+/**
+ * ONE-TIME ONBOARDING HELPER — how to log in for the first time.
+ *
+ * The Super Admin account created by setupTCCFinance() starts with a bootstrap
+ * password whose plaintext is intentionally NOT stored anywhere in this file
+ * (only its hash is, so it can't be read back). To choose your own first
+ * password:
+ *   1. Edit the PLAINTEXT_PASSWORD value below to a password you'll remember.
+ *   2. In the Apps Script editor, select this function from the dropdown and
+ *      click Run (once).
+ *   3. Log in on the frontend with:
+ *        email:    the value returned by getTCCSetupInfo().superAdminEmail
+ *                  (superadmin@tcc.local unless you changed it)
+ *        password: the PLAINTEXT_PASSWORD you set below
+ *      You'll be forced to change it immediately after logging in — that's
+ *      expected (must_change_password is set to TRUE).
+ *   4. Afterwards, clear the PLAINTEXT_PASSWORD value below back to '' and
+ *      save, so the plaintext doesn't linger in your script source.
+ */
+function setInitialSuperAdminPassword() {
+  const PLAINTEXT_PASSWORD = ''; // <-- set a password here, run once, then clear it again
+  if (!PLAINTEXT_PASSWORD) throw new Error('Isi dulu PLAINTEXT_PASSWORD di baris atas fungsi ini, lalu jalankan lagi.');
+  if (PLAINTEXT_PASSWORD.length < 8) throw new Error('Gunakan password minimal 8 karakter.');
+
+  const props = PropertiesService.getScriptProperties();
+  const email = props.getProperty(PROP_SUPER_ADMIN_EMAIL) || DEFAULT_SUPER_ADMIN_EMAIL;
+  const hash = hashPassword_(PLAINTEXT_PASSWORD);
+  props.setProperty(PROP_SUPER_ADMIN_PASSWORD_HASH, hash);
+
+  const ss = getSpreadsheet_();
   const sheet = ss.getSheetByName(SHEETS.AUTH_USERS);
-  if (!sheet) return;
-  const rows = getSheetAsObjects_(sheet);
-  if (!rows.some(r => String(r.email).toLowerCase() === DEFAULT_ADMIN_EMAIL)) {
-    appendRowFromObject(sheet, getHeaders_(sheet), {id:'AUTH-ADMIN-DEFAULT',email:DEFAULT_ADMIN_EMAIL,password_hash:DEFAULT_ADMIN_PASSWORD_HASH,role:'ADMIN',status:'ACTIVE',must_change_password:'TRUE',created_at:formatDateTime_(new Date())});
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const emailCol = headers.indexOf('email');
+  const hashCol = headers.indexOf('password_hash');
+  const mustChangeCol = headers.indexOf('must_change_password');
+  let updated = false;
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][emailCol]).toLowerCase() === email.toLowerCase()) {
+      sheet.getRange(i + 1, hashCol + 1).setValue(hash);
+      sheet.getRange(i + 1, mustChangeCol + 1).setValue('TRUE');
+      updated = true;
+      break;
+    }
   }
+  if (!updated) throw new Error('Akun Super Admin belum ada. Jalankan setupTCCFinance() dulu, baru fungsi ini.');
+  return 'OK. Login dengan email ' + email + ' dan password yang baru saja Anda set. Sekarang kosongkan lagi PLAINTEXT_PASSWORD di kode ini.';
 }
 
 function ensureSetup_() {
@@ -205,7 +257,7 @@ function doGet(e) {
       case 'dashboard': { const session=requireSession_({token:String(e.parameter.token||'')}); result = calculateDashboardForSession_(session); break; }
       case 'transactions': { const session=requireSession_({token:String(e.parameter.token||'')}); result = getTransactionsForSession_(session,e.parameter); break; }
       case 'events': { const session=requireSession_({token:String(e.parameter.token||'')}); result = getEventsForSession_(session,e.parameter); break; }
-      case 'event_detail': { const session=requireSession_({token:String(e.parameter.token||'')}); const ev=getEventDetail(e.parameter.event_id); assertBrandAccess_(session,ev.brand_id); result=ev; break; }
+      case 'event_detail': { const session=requireSession_({token:String(e.parameter.token||'')}); const ev=getEventDetail(e.parameter.event_id); if (session.role!=='SUPER_ADMIN') { if (!hasPermission_(session, ev.brand_id, 'view_events')) throw new Error('Anda tidak memiliki permission untuk melihat event brand ini.'); } result=ev; break; }
       case 'categories': result = getActiveCategories_(); break;
       case 'payment_methods': result = getActivePaymentMethods_(); break;
       case 'report': { const session=requireSession_({token:String(e.parameter.token||'')}); result = getReportForSession_(session,e.parameter); break; }
@@ -214,7 +266,7 @@ function doGet(e) {
       case 'cash': result = getCashOverviewForSession_(e.parameter); break;
       case 'requests': result = getRequests(e.parameter); break;
       case 'request_status': result = getRequestStatus_(e.parameter.request_id, e.parameter.request_access_token, e.parameter.token); break;
-      case 'users': requireSuperAdmin_({token:String(e.parameter.token||'')}); result = getSheetAsObjects_(getSheet_(SHEETS.USERS)); break;
+      case 'users': { const session=requireSuperAdmin_({token:String(e.parameter.token||'')}); result = getUsersForSession_(session); break; }
       case 'access': requireSuperAdmin_({token:String(e.parameter.token||'')}); result = getAccessControl_(); break;
       default: return jsonResponse({ success:false, error:'Unknown action: ' + action });
     }
@@ -227,7 +279,7 @@ function doPost(e) {
     const body = JSON.parse(e.postData.contents || '{}');
     const action = String(body.action || '');
     if (action === 'login') return jsonResponse({ success:true, data:login_(body) });
-    if (action === 'logout') { revokeSession_(body.token); return jsonResponse({ success:true, data:{logged_out:true} }); }
+    if (action === 'logout') { if (body.token) revokeSession_(body.token); return jsonResponse({ success:true, data:{logged_out:true} }); }
     ensureSetup_();
     const method = String(body.method || 'POST').toUpperCase();
     let result;
@@ -241,6 +293,7 @@ function doPost(e) {
 function handleCreate_(action, body) {
   switch (action) {
     case 'request': return createFinanceRequest_(body);
+    case 'auth_user': requireSuperAdmin_(body); return createAuthUser_(body);
     case 'upload_bukti': return uploadBukti_(body);
     case 'income': return createFinanceRequest_(Object.assign({},body,{type:'INCOME'}));
     case 'expense': return createFinanceRequest_(Object.assign({},body,{type:'EXPENSE'}));
@@ -253,6 +306,7 @@ function handleCreate_(action, body) {
 }
 function handleUpdate_(action, body) {
   if (action === 'access') return updateBrandAccess_(body);
+  if (action === 'auth_password') return changePasswordForSession_(body);
   const session = requireSuperAdmin_(body);
   const actor = session.email;
   switch (action) {
@@ -261,7 +315,6 @@ function handleUpdate_(action, body) {
     case 'cash_setup': return setupCash_(body);
     case 'transaction': return updateRowById_(body.sheet === 'expense' ? SHEETS.EXPENSE : SHEETS.INCOME,'transaction_id',body.id,body.fields||{},actor);
     case 'event': return updateRowById_(SHEETS.EVENTS,'event_id',body.id,body.fields||{},actor);
-    case 'auth_password': return changeSuperAdminPassword_(body);
     case 'config': return setConfig_(body);
     case 'auth_user': return createAuthUser_(body);
     default: throw new Error('Unknown update action: ' + action);
@@ -337,13 +390,13 @@ function createEvent_(body) {
     tanggal_selesai:cleanText_(body.tanggal_selesai,20),
     jumlah_peserta:integerOrZero_(body.jumlah_peserta),
     biaya_registrasi:numberOrZero_(body.biaya_registrasi),
-    target_pemasukan:numberOrZero_(body.target_pemasukan),
+    target_pemasukan:numberOrZero_(body.target_pemasukan) || (integerOrZero_(body.jumlah_peserta) * numberOrZero_(body.biaya_registrasi)),
     budget:numberOrZero_(body.budget),
     prize_pool:numberOrZero_(body.prize_pool),
     sponsor_revenue:numberOrZero_(body.sponsor_revenue),
     other_income:numberOrZero_(body.other_income),
     other_expense:numberOrZero_(body.other_expense),
-    expected_profit:numberOrZero_(body.target_pemasukan)+numberOrZero_(body.sponsor_revenue)+numberOrZero_(body.other_income)-numberOrZero_(body.prize_pool)-numberOrZero_(body.budget)-numberOrZero_(body.other_expense),
+    expected_profit:(numberOrZero_(body.target_pemasukan) || (integerOrZero_(body.jumlah_peserta) * numberOrZero_(body.biaya_registrasi)))+numberOrZero_(body.sponsor_revenue)+numberOrZero_(body.other_income)-numberOrZero_(body.prize_pool)-numberOrZero_(body.budget)-numberOrZero_(body.other_expense),
     status:['upcoming','ongoing','completed','cancelled'].includes(String(body.status||'').toLowerCase()) ? String(body.status).toLowerCase() : 'upcoming',
     created_at:formatDateTime_(new Date())
   };
@@ -425,23 +478,21 @@ function deleteRowById_(sheetName,idField,idValue,user) { const sheet=getSheet_(
 
 
 function getRequests(params) {
-  const token = String(params.token || '');
+  // Request listing is private by design. Only an authenticated session
+  // may access the ledger; public tracking uses request_status + access token.
+  const auth = requireSession_({token:String(params.token || '')});
   let rows = getSheetAsObjects_(getSheet_(SHEETS.REQUESTS)).reverse();
-  if (token) {
-    const auth = requireSession_({token});
-    if (auth.role === 'ADMIN') rows = rows.filter(r => String(r.user_id) === String(auth.userId || auth.email) || hasPermission_(auth,r.brand_id,'view_requests'));
+
+  if (auth.role !== 'SUPER_ADMIN') {
+    const uid = String(auth.userId || auth.email);
+    rows = rows.filter(r =>
+      String(r.user_id) === uid ||
+      hasPermission_(auth, r.brand_id, 'view_requests')
+    );
   }
+
   const status = String(params.status || '').toUpperCase();
   const type = String(params.type || '').toUpperCase();
-
-  if (token) {
-    requireSession_({token});
-  } else {
-    const accessToken = String(params.request_access_token || '');
-    if (!accessToken) throw new Error('Akses pengajuan tidak valid.');
-    const accessHash = hashPassword_(accessToken);
-    rows = rows.filter(r => String(r.access_token_hash || '') === accessHash);
-  }
   if (status) rows = rows.filter(r => String(r.status).toUpperCase() === status);
   if (type) rows = rows.filter(r => String(r.type).toUpperCase() === type);
   if (params.request_id) rows = rows.filter(r => String(r.request_id) === String(params.request_id));
@@ -449,8 +500,8 @@ function getRequests(params) {
 }
 
 function createFinanceRequest_(body) {
-  const auth = body.token ? requireSession_({token:String(body.token||'')}) : null;
-  if (auth && auth.role === 'ADMIN') body = Object.assign({}, body, {user_id:auth.userId||auth.email,user_name:auth.userName||auth.email});
+  const auth = requireSession_({token:String(body.token||'')});
+  body = Object.assign({}, body, {user_id:auth.userId||auth.email,user_name:auth.userName||auth.email});
 
   const type = String(body.type || '').toUpperCase();
   const allowed = ['INCOME','EXPENSE','TOURNAMENT','SPONSOR','EVENT'];
@@ -458,7 +509,7 @@ function createFinanceRequest_(body) {
 
   const brandId = String(body.brand_id || '').trim();
   if (!brandId || !getActiveBrand_(brandId)) throw new Error('Brand tidak valid atau tidak aktif.');
-  if (auth) assertPermission_(auth, brandId, 'create_request');
+  assertPermission_(auth, brandId, 'create_request');
 
   const name = cleanText_(body.nama, 160);
   if (!name) throw new Error('Nama/judul pengajuan wajib diisi.');
@@ -466,7 +517,7 @@ function createFinanceRequest_(body) {
   const nominal = numberOrZero_(body.nominal);
   const peserta = integerOrZero_(body.jumlah_peserta);
   const biaya = numberOrZero_(body.biaya_registrasi);
-  const target = numberOrZero_(body.target_pemasukan);
+  const target = numberOrZero_(body.target_pemasukan) || (peserta * biaya);
   const budget = numberOrZero_(body.budget);
   const prize = numberOrZero_(body.prize_pool);
 
@@ -540,14 +591,16 @@ function getRequestStatus_(id, accessToken, superToken) {
 }
 
 function sessionInfo_(params) {
-  const session = requireSession_({token:String(params.token || '')});
+  const session = requireSession_({token:String(params.token || '')}, true);
   return {role:session.role,email:session.email,user_id:session.userId||session.email,user_name:session.userName||session.email,expires_at:session.expiresAt};
 }
-function requireSession_(body) {
+function requireSession_(body, allowPasswordChange) {
   const token = String(body.token || '');
   if (!token) throw new Error('Login diperlukan.');
   const session = getSession_(token);
   if (!session || !session.role || !session.email) throw new Error('Sesi tidak valid atau sudah kedaluwarsa. Silakan login kembali.');
+  if (session.mustChangePassword && !allowPasswordChange) throw new Error('PASSWORD_CHANGE_REQUIRED');
+  session.__token = token;
   return session;
 }
 
@@ -582,7 +635,7 @@ function updateRequestStatus_(body) {
   try {
     const requestId = String(body.id || '').trim();
     const status = String(body.status || '').toUpperCase();
-    if (!['APPROVED','REJECTED'].includes(status)) throw new Error('Status approval tidak valid.');
+    if (!['APPROVED','REJECTED','CANCELLED'].includes(status)) throw new Error('Status approval tidak valid.');
 
     const session = requireSuperAdmin_(body);
     const sheet = getSheet_(SHEETS.REQUESTS);
@@ -604,6 +657,7 @@ function updateRequestStatus_(body) {
       let wa = '';
       if (status === 'APPROVED') {
         if (['INCOME','EXPENSE'].includes(obj.type)) finalizeApprovedFinance_(obj, body);
+        if (obj.type === 'SPONSOR') finalizeApprovedSponsor_(obj, body);
         if (obj.type === 'EVENT') finalizeApprovedEvent_(obj, body);
         if (['TOURNAMENT','SPONSOR','EVENT'].includes(obj.type)) wa = buildWhatsAppUrl_(obj);
       }
@@ -628,24 +682,81 @@ function updateRequestStatus_(body) {
 }
 
 function finalizeApprovedFinance_(obj,body){const common={tanggal:formatDate_(new Date()),jam:formatTime_(new Date()),kategori:obj.kategori,event_id:obj.event_id,nominal:Number(obj.nominal)||0,metode_pembayaran:obj.metode_pembayaran,penginput:obj.user_name||obj.user_id||body.user,catatan:obj.catatan,bukti:obj.bukti,brand_id:obj.brand_id};if(String(obj.type).toUpperCase()==='INCOME')createTransaction_(SHEETS.INCOME,Object.assign({},common,{nama:obj.nama}), 'IN');else createTransaction_(SHEETS.EXPENSE,Object.assign({},common,{nama:obj.nama,vendor:obj.vendor}),'EX');}
-function finalizeApprovedEvent_(obj,body){return createEvent_({user:body.user,brand_id:obj.brand_id,nama_event:obj.nama,game:obj.game,kategori_event:obj.kategori_event,sistem_turnamen:obj.sistem_turnamen,tanggal_mulai:obj.tanggal_mulai,tanggal_selesai:obj.tanggal_selesai,jumlah_peserta:obj.jumlah_peserta,biaya_registrasi:obj.biaya_registrasi,target_pemasukan:obj.target_pemasukan,budget:obj.budget,prize_pool:obj.prize_pool,sponsor_revenue:obj.sponsor_revenue,other_income:obj.other_income,other_expense:obj.other_expense,status:'upcoming'});}
-function cancelFinanceRequest_(body){return updateRequestStatus_(Object.assign({},body,{status:'CANCELLED'}));}
+function finalizeApprovedSponsor_(obj, body) {
+  const nominal = Number(obj.nominal) || 0;
+  if (nominal <= 0) throw new Error('Nominal sponsor harus lebih besar dari 0 untuk approval.');
+  createTransaction_(SHEETS.INCOME, {
+    token: body.token,
+    tanggal: formatDate_(new Date()), jam: formatTime_(new Date()),
+    kategori: 'Sponsor', event_id: obj.event_id || '', nominal,
+    metode_pembayaran: obj.metode_pembayaran || 'Lainnya',
+    penginput: obj.user_name || obj.user_id || body.user,
+    catatan: obj.catatan || ('Sponsor: ' + (obj.vendor || obj.nama || 'Sponsor')),
+    bukti: obj.bukti || '', brand_id: obj.brand_id, nama: obj.nama || 'Pemasukan Sponsor'
+  }, 'IN');
+}
+function finalizeApprovedEvent_(obj,body){
+  // The approving Super Admin session is reused; do not perform a second
+  // authentication lookup without forwarding the token.
+  return createEvent_({
+    token:body.token,
+    user:body.user,
+    brand_id:obj.brand_id,
+    nama_event:obj.nama,
+    game:obj.game,
+    kategori_event:obj.kategori_event,
+    sistem_turnamen:obj.sistem_turnamen,
+    tanggal_mulai:obj.tanggal_mulai,
+    tanggal_selesai:obj.tanggal_selesai,
+    jumlah_peserta:obj.jumlah_peserta,
+    biaya_registrasi:obj.biaya_registrasi,
+    target_pemasukan:obj.target_pemasukan,
+    budget:obj.budget,
+    prize_pool:obj.prize_pool,
+    sponsor_revenue:obj.sponsor_revenue,
+    other_income:obj.other_income,
+    other_expense:obj.other_expense,
+    status:'upcoming'
+  });
+}
+function cancelFinanceRequest_(body){ const session=requireSuperAdmin_(body); return updateRequestStatus_(Object.assign({},body,{status:'CANCELLED',user:session.email})); }
 
-const DEFAULT_ADMIN_PERMISSIONS_=['view_cash','view_transactions','view_events','create_request'];
+const DEFAULT_ADMIN_PERMISSIONS_=[];
 function getUserBrandAccess_(session){
   if(session.role==='SUPER_ADMIN') return getSheetAsObjects_(getSheet_(SHEETS.BRANDS)).filter(r=>String(r.status).toUpperCase()!=='INACTIVE').map(b=>({brand_id:String(b.brand_id),permissions:['*']}));
   const rows=getSheetAsObjects_(getSheet_(SHEETS.BRAND_USERS));
   const uid=String(session.userId||session.email);
   return rows.filter(r=>String(r.user_id)===uid && String(r.status).toUpperCase()!=='INACTIVE').map(r=>({brand_id:String(r.brand_id),permissions:parsePermissions_(r.permissions)}));
 }
-function parsePermissions_(raw){try{const a=JSON.parse(String(raw||''));return Array.isArray(a)&&a.length?a.map(String):DEFAULT_ADMIN_PERMISSIONS_.slice();}catch(e){return DEFAULT_ADMIN_PERMISSIONS_.slice();}}
+function parsePermissions_(raw){try{const a=JSON.parse(String(raw||''));return Array.isArray(a)?a.map(String):DEFAULT_ADMIN_PERMISSIONS_.slice();}catch(e){return DEFAULT_ADMIN_PERMISSIONS_.slice();}}
 function hasPermission_(session,brandId,permission){if(session.role==='SUPER_ADMIN')return true;const row=getUserBrandAccess_(session).find(x=>x.brand_id===String(brandId));return !!row && (row.permissions.includes('*')||row.permissions.includes(permission));}
 function assertPermission_(session,brandId,permission){if(!hasPermission_(session,brandId,permission))throw new Error('Anda tidak memiliki permission '+permission+' untuk brand ini.');}
+function getUsersForSession_(session) {
+  if (session.role !== 'SUPER_ADMIN') throw new Error('Akses Super Admin diperlukan.');
+  const authRows = getSheetAsObjects_(getSheet_(SHEETS.AUTH_USERS));
+  const profileRows = getSheetAsObjects_(getSheet_(SHEETS.USERS));
+  const profileById = {};
+  profileRows.forEach(r => { profileById[String(r.id)] = r; });
+  const accessRows = getSheetAsObjects_(getSheet_(SHEETS.BRAND_USERS));
+  return authRows.map(u => {
+    const p = profileById[String(u.id)] || {};
+    const access = accessRows.filter(a => String(a.user_id) === String(u.id) && String(a.status).toUpperCase() !== 'INACTIVE');
+    return {
+      id:String(u.id||''), nama:String(p.nama||u.email||''), email:String(u.email||''), role:String(u.role||''),
+      status:String(u.status||''), must_change_password:String(u.must_change_password||'FALSE').toUpperCase()==='TRUE',
+      created_at:String(u.created_at||p.created_at||''),
+      brand_ids:access.map(a=>String(a.brand_id||'')),
+      permissions:access.reduce((all,a)=>all.concat(parsePermissions_(a.permissions)),[])
+        .filter((v,i,arr)=>arr.indexOf(v)===i)
+    };
+  });
+}
+
 function getAccessControl_(){
  const users=getSheetAsObjects_(getSheet_(SHEETS.AUTH_USERS)).filter(u=>String(u.role).toUpperCase()==='ADMIN').map(u=>({id:u.id,email:u.email,status:u.status}));
  const brands=getSheetAsObjects_(getSheet_(SHEETS.BRANDS)).filter(b=>String(b.status).toUpperCase()!=='INACTIVE');
  const access=getSheetAsObjects_(getSheet_(SHEETS.BRAND_USERS)).map(r=>({id:r.id,user_id:String(r.user_id),brand_id:String(r.brand_id),permissions:parsePermissions_(r.permissions),status:r.status}));
- return {users,brands,access,permission_catalog:[['view_cash','Lihat Kas'],['view_transactions','Lihat Transaksi'],['view_events','Lihat Event'],['create_request','Buat Pengajuan'],['view_reports','Lihat Report']]};
+ return {users,brands,access,permission_catalog:[['view_cash','Lihat Kas'],['view_cash_history','Lihat Riwayat Kas'],['view_transactions','Lihat Transaksi'],['export_transactions','Export Transaksi'],['view_events','Lihat Event'],['view_event_finance','Lihat Keuangan Event'],['create_request','Buat Pengajuan'],['view_requests','Lihat Pengajuan'],['view_reports','Lihat Report'],['export_reports','Export Report']]};
 }
 function updateBrandAccess_(body){
  const session=requireSuperAdmin_(body); const userId=String(body.user_id||''); const brandId=String(body.brand_id||'');
@@ -661,7 +772,18 @@ function updateBrandAccess_(body){
 function getTransactionsForSession_(session,params){let rows=getTransactions(params);if(session.role==='SUPER_ADMIN')return rows;return rows.filter(r=>hasPermission_(session,r.brand_id,'view_transactions'));}
 function getEventsForSession_(session,params){let rows=getEvents(params);if(session.role==='SUPER_ADMIN')return rows;return rows.filter(r=>hasPermission_(session,r.brand_id,'view_events'));}
 function calculateDashboardForSession_(session){
- const brands=getCashOverviewForSession_({token:findTokenForSession_(session)}); const income=brands.reduce((s,b)=>s+Number(b.total_income||0),0), expense=brands.reduce((s,b)=>s+Number(b.total_expense||0),0); const events=getEventsForSession_(session,{}), tx=getTransactionsForSession_(session,{}); return {saldo:brands.reduce((s,b)=>s+Number(b.saldo_sistem||0),0),total_income:income,total_expense:expense,jumlah_event:events.length,jumlah_transaksi:tx.length,transaksi_terbaru:tx.slice(0,8),cash_by_brand:brands};
+ const brands=getCashOverviewForSession_({token:findTokenForSession_(session)});
+ const income=brands.reduce((s,b)=>s+Number(b.total_income||0),0), expense=brands.reduce((s,b)=>s+Number(b.total_expense||0),0);
+ const events=getEventsForSession_(session,{}), tx=getTransactionsForSession_(session,{});
+ const monthly=buildMonthlyCashflow_(tx,6);
+ return {saldo:brands.reduce((s,b)=>s+Number(b.saldo_sistem||0),0),total_income:income,total_expense:expense,jumlah_event:events.length,jumlah_transaksi:tx.length,transaksi_terbaru:tx.slice(0,8),cash_by_brand:brands,monthly_cashflow:monthly};
+}
+function buildMonthlyCashflow_(rows,count){
+ const now=new Date(), out=[];
+ for(let i=count-1;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1);out.push({key:d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'),label:Utilities.formatDate(d,getTimezone_(),'MMM'),income:0,expense:0});}
+ const map={};out.forEach(x=>map[x.key]=x);
+ rows.forEach(r=>{const raw=String(r.created_at||r.tanggal||'');const t=sheetDateTimeKey_(raw);if(!t)return;const d=new Date(t),key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');if(!map[key])return;const n=Number(r.nominal)||0;if(r.type==='income')map[key].income+=n;else map[key].expense+=n;});
+ return out;
 }
 function findTokenForSession_(session){return session.__token||'';}
 function getReportForSession_(session,params){const tx=getTransactionsForSession_(session,params||{}),inc=tx.filter(x=>x.type==='income'),exp=tx.filter(x=>x.type==='expense');return {total_income:sumField_(inc,'nominal'),total_expense:sumField_(exp,'nominal'),saldo:sumField_(inc,'nominal')-sumField_(exp,'nominal'),income_by_category:groupSum_(inc,'kategori','nominal'),expense_by_category:groupSum_(exp,'kategori','nominal'),jumlah_transaksi:tx.length};}
@@ -685,18 +807,9 @@ function getCashOverviewForSession_(params) {
   const ids=getUserBrandIds_(session);
   return rows.filter(r=>ids.includes(String(r.brand_id)) && hasPermission_(session,r.brand_id,'view_cash'));
 }
-function assignDefaultBrandAccess_(userId) {
-  const brands=getSheetAsObjects_(getSheet_(SHEETS.BRANDS)).filter(r=>String(r.status).toUpperCase()!=='INACTIVE');
-  const sh=getSheet_(SHEETS.BRAND_USERS), headers=getHeaders_(sh), existing=getSheetAsObjects_(sh);
-  brands.forEach(b=>{
-    if(!existing.some(x=>String(x.user_id)===String(userId)&&String(x.brand_id)===String(b.brand_id))) {
-      appendRowFromObject(sh,headers,{id:generateId_('BU'),brand_id:b.brand_id,user_id:userId,role:'ADMIN',status:'ACTIVE',created_at:formatDateTime_(new Date())});
-    }
-  });
-}
-
 function getCashOverview(){const brands=getSheetAsObjects_(getSheet_(SHEETS.BRANDS)).filter(r=>String(r.status).toUpperCase()!=='INACTIVE'),accounts=getSheetAsObjects_(getSheet_(SHEETS.CASH_ACCOUNTS)),income=getSheetAsObjects_(getSheet_(SHEETS.INCOME)),expense=getSheetAsObjects_(getSheet_(SHEETS.EXPENSE));return brands.map(b=>{const a=accounts.find(x=>String(x.brand_id)===String(b.brand_id))||{},inc=income.filter(t=>String(t.brand_id)===String(b.brand_id)),exp=expense.filter(t=>String(t.brand_id)===String(b.brand_id)),sa=Number(a.saldo_awal)||0,ti=sumField_(inc,'nominal'),te=sumField_(exp,'nominal'),ss=sa+ti-te;return{brand_id:b.brand_id,nama_brand:b.nama_brand,saldo_awal:sa,total_income:ti,total_expense:te,saldo_sistem:ss,saldo_aktual:a.saldo_aktual===''||a.saldo_aktual===undefined?ss:Number(a.saldo_aktual),updated_at:a.updated_at||''};});}
 function createBrand_(body) {
+  const session = requireSuperAdmin_(body);
   const name = cleanText_(body.nama_brand, 100);
   if (!name) throw new Error('Nama brand wajib diisi.');
   const brands = getSheetAsObjects_(getSheet_(SHEETS.BRANDS));
@@ -708,7 +821,6 @@ function createBrand_(body) {
   appendRowFromObject(sheet,getHeaders_(sheet),{
     brand_id:id,nama_brand:name,status:'ACTIVE',created_at:formatDateTime_(new Date())
   });
-  const session = requireSuperAdmin_(body);
   logAudit_(session.email,'CREATE_BRAND',id,'Membuat brand '+name);
   return {brand_id:id};
 }
@@ -792,9 +904,10 @@ function login_(body) {
   cache.remove(lockKey);
   const token = Utilities.getUuid() + '-' + Utilities.getUuid();
   const expiresAt = Date.now() + SESSION_TTL_SECONDS * 1000;
-  CacheService.getScriptCache().put(PROP_SESSION_PREFIX + token, JSON.stringify({email,role,userId,userName,expiresAt}), SESSION_TTL_SECONDS);
+  const mustChangePassword = String(row?.must_change_password || 'FALSE').toUpperCase() === 'TRUE';
+  CacheService.getScriptCache().put(PROP_SESSION_PREFIX + token, JSON.stringify({email,role,userId,userName,expiresAt,mustChangePassword}), SESSION_TTL_SECONDS);
   logAudit_(email,'LOGIN_'+role,'','Login berhasil');
-  return {token,role,email,user_id:userId,user_name:userName,expires_at:expiresAt,must_change_password:String(row?.must_change_password||'FALSE').toUpperCase()==='TRUE'};
+  return {token,role,email,user_id:userId,user_name:userName,expires_at:expiresAt,must_change_password:mustChangePassword};
 }
 
 function getSession_(token) {
@@ -817,6 +930,52 @@ function getSession_(token) {
 function revokeSession_(token) {
   const value = String(token || '');
   if (value) CacheService.getScriptCache().remove(PROP_SESSION_PREFIX + value);
+}
+
+function changePasswordForSession_(body) {
+  const session = requireSession_(body, true);
+  const current = String(body.current_password || '');
+  const next = String(body.new_password || '');
+  if (next.length < 12) throw new Error('Password baru minimal 12 karakter.');
+  if (next === current) throw new Error('Password baru harus berbeda dari password lama.');
+
+  if (session.role === 'SUPER_ADMIN') {
+    const props = PropertiesService.getScriptProperties();
+    const oldHash = props.getProperty(PROP_SUPER_ADMIN_PASSWORD_HASH) || DEFAULT_SUPER_ADMIN_PASSWORD_HASH;
+    if (!safeEqual_(hashPassword_(current), oldHash)) throw new Error('Password lama salah.');
+    const newHash = hashPassword_(next);
+    props.setProperty(PROP_SUPER_ADMIN_PASSWORD_HASH, newHash);
+    const sh = getSheet_(SHEETS.AUTH_USERS);
+    const headers = getHeaders_(sh);
+    const data = sh.getDataRange().getValues();
+    const emailCol = headers.indexOf('email'), hashCol = headers.indexOf('password_hash'), changeCol = headers.indexOf('must_change_password');
+    for (let i=1;i<data.length;i++) {
+      if (String(data[i][emailCol] || '').toLowerCase() === String(session.email).toLowerCase()) {
+        if (hashCol !== -1) sh.getRange(i+1,hashCol+1).setValue(newHash);
+        if (changeCol !== -1) sh.getRange(i+1,changeCol+1).setValue('FALSE');
+        break;
+      }
+    }
+  } else {
+    const sh = getSheet_(SHEETS.AUTH_USERS);
+    const headers = getHeaders_(sh);
+    const data = sh.getDataRange().getValues();
+    const idCol = headers.indexOf('id'), hashCol = headers.indexOf('password_hash'), changeCol = headers.indexOf('must_change_password');
+    let found = false;
+    for (let i=1;i<data.length;i++) {
+      if (String(data[i][idCol]) === String(session.userId)) {
+        if (!safeEqual_(hashPassword_(current), String(data[i][hashCol] || ''))) throw new Error('Password lama salah.');
+        sh.getRange(i+1, hashCol+1).setValue(hashPassword_(next));
+        if (changeCol !== -1) sh.getRange(i+1, changeCol+1).setValue('FALSE');
+        found = true; break;
+      }
+    }
+    if (!found) throw new Error('Akun Admin tidak ditemukan.');
+  }
+  // Invalidate current session so the client must login again with the new password.
+  revokeSession_(session.__token);
+  logAudit_(session.email, 'CHANGE_PASSWORD', session.userId || session.email, 'Password akun diubah');
+  return {changed:true, requires_login:true};
 }
 
 function changeSuperAdminPassword_(body) {
@@ -863,7 +1022,7 @@ function createAuthUser_(body) {
   const requestedBrands = Array.isArray(body.brand_ids) ? body.brand_ids.map(String) : [];
   const activeBrands = getSheetAsObjects_(getSheet_(SHEETS.BRANDS)).filter(r=>String(r.status).toUpperCase()!=='INACTIVE');
   const selected = activeBrands.filter(b=>requestedBrands.includes(String(b.brand_id)));
-  const permissions = Array.isArray(body.permissions) && body.permissions.length ? body.permissions : ['view_cash','view_transactions','view_events','create_request'];
+  const permissions = Array.isArray(body.permissions) && body.permissions.length ? body.permissions.map(String) : [];
   const bu=getSheet_(SHEETS.BRAND_USERS);
   selected.forEach(b=>appendRowFromObject(bu,getHeaders_(bu),{id:generateId_('BU'),brand_id:b.brand_id,user_id:id,role:'ADMIN',permissions:JSON.stringify(permissions),status:'ACTIVE',created_at:formatDateTime_(new Date())}));
   logAudit_(session.email,'CREATE_ADMIN',id,'Membuat akun admin '+email);

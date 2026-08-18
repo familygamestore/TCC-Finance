@@ -1,101 +1,24 @@
-# TCC Finance V15 — Ultra Enterprise Command Center
+# TCC Finance V25 — FINAL FIXED
 
-TCC Finance V15 adalah upgrade menyeluruh dari V10/V14 untuk pengelolaan multi-brand finance, kas, transaksi, pengajuan, event, approval, analytics, user management, dan access control berbasis Google Sheets + Google Apps Script + Next.js.
+TCC Finance adalah finance command center multi-brand berbasis Next.js + Google Apps Script + Google Sheets. V25 menyatukan UI responsive, RBAC per brand, approval workflow, universal event builder, cash management, dashboard, audit, dan deployment Vercel.
 
-## Prinsip V15
+## Arsitektur
+- `frontend/` — Next.js 16 + React 19
+- `apps-script/Code.gs` — API, auth, RBAC, approval, Spreadsheet/Drive
+- `frontend/app/api/apps-script/route.ts` — proxy Next.js ke Apps Script
+- Google Sheets — penyimpanan data
 
-- Super Admin = akses mutlak ke seluruh brand, kas, transaksi, pengajuan, event, users, settings, audit, dan permission.
-- Admin = hanya melihat brand yang secara eksplisit diberikan oleh Super Admin.
-- Admin tidak mendapatkan semua brand secara otomatis.
-- Pengajuan Admin masuk PENDING dan diproses Super Admin.
-- Akses brand dan permission diperiksa di backend, bukan hanya disembunyikan di UI.
-- UI responsive untuk HP 320px+, Android, iPhone, iPad, tablet, laptop, desktop, dan wide monitor.
-- Dark/Light mode dan sidebar collapse tersimpan di browser.
+## Role
+### SUPER_ADMIN
+Full access ke seluruh brand, kas, transaksi, event, pengajuan, user, access control, settings dan audit.
 
-## Fitur
+### ADMIN
+Akses hanya ke brand dan permission yang diberikan Super Admin. Pengajuan wajib login; ledger sensitif dibuat setelah approval Super Admin.
 
-### Workspace
-- Landing page sebelum login.
-- Dashboard command center.
-- Cash overview.
-- Income/expense summary.
-- Event overview.
-- Quick actions.
-- Responsive navigation drawer.
+## Workflow
+Admin → Pengajuan → PENDING → Super Admin → APPROVED/REJECTED → transaksi/event final.
 
-### Finance
-- Multi-brand cash account.
-- Saldo awal, saldo sistem, saldo aktual.
-- Rekonsiliasi dan cash adjustment.
-- Transaction ledger.
-- Kategori dan payment method.
-- Format nominal Rupiah.
-- Quick amount selector.
-
-### Pengajuan
-- Income.
-- Expense.
-- Event/tournament.
-- Sponsor.
-- Status PENDING / APPROVED / REJECTED.
-- Approval Super Admin.
-- Access token untuk tracking pengajuan.
-
-### Event
-- Game bebas/custom.
-- Kategori bebas.
-- Jumlah tim/peserta.
-- Biaya registrasi.
-- Budget.
-- Prize pool.
-- Sponsor revenue.
-- Event budget summary.
-
-### Access Control
-Super Admin dapat memilih:
-
-`Admin → Brand → Permission`
-
-Permission tersedia:
-
-- view_cash
-- view_transactions
-- view_events
-- create_request
-- view_reports
-
-Mencabut semua permission akan menghapus assignment brand tersebut.
-
-### Security
-- Server-side session validation.
-- Session expiration.
-- Login attempt limiting.
-- Super Admin protected endpoints.
-- Brand permission checks.
-- Audit log.
-- Password minimum 12 karakter untuk account management.
-- Admin baru tidak memperoleh semua brand otomatis.
-
-## Struktur
-
-```text
-TCC-Finance-V15/
-├── apps-script/Code.gs
-├── docs/spreadsheet-setup.md
-├── docs/spreadsheet-template/
-├── frontend/
-│   ├── app/
-│   ├── components/
-│   ├── hooks/
-│   ├── lib/
-│   ├── types/
-│   └── utils/
-├── vercel.json
-└── README.md
-```
-
-## Local Development
-
+## Local
 ```powershell
 cd frontend
 npm.cmd install
@@ -103,63 +26,84 @@ npm.cmd run typecheck
 npm.cmd run build
 npm.cmd run dev
 ```
-
-Open `http://localhost:3000`.
+Buka `http://localhost:3000`.
 
 ## Apps Script
-
 1. Buka Google Apps Script.
-2. Ganti Code.gs dengan `apps-script/Code.gs`.
+2. Masukkan `apps-script/Code.gs`.
 3. Jalankan `setupTCCFinance()` sekali.
 4. Deploy sebagai Web App.
 5. Salin URL `/exec`.
-6. Di Vercel set environment variable:
 
+## Cara login pertama kali
+`setupTCCFinance()` membuat akun Super Admin (`superadmin@tcc.local`), tapi
+password bootstrap-nya sengaja **tidak** disimpan dalam bentuk plaintext di
+manapun di source code ini (hanya hash-nya) — jadi tidak ada password default
+yang bisa langsung dipakai. Untuk set password pertama Anda sendiri:
+1. Di Apps Script editor, buka fungsi `setInitialSuperAdminPassword()` di
+   `Code.gs`.
+2. Isi baris `PLAINTEXT_PASSWORD = ''` dengan password pilihan Anda (min. 8
+   karakter).
+3. Pilih fungsi `setInitialSuperAdminPassword` dari dropdown, klik **Run**
+   (sekali saja).
+4. Login di frontend dengan email `superadmin@tcc.local` dan password yang
+   baru saja Anda set. Anda akan langsung diminta ganti password — itu
+   memang disengaja (`must_change_password`).
+5. Kosongkan lagi `PLAINTEXT_PASSWORD` di kode dan simpan, supaya password
+   tidak tertinggal dalam bentuk teks biasa di script Anda.
+
+Akun Admin (bukan Super Admin) tidak dibuat otomatis — buat lewat menu
+Administration setelah login sebagai Super Admin.
+
+## Vercel
+Root Directory: `frontend`
+Build Command: `npm run build`
+Output Directory: kosong/default Next.js
+Node.js: 22.x
+
+Environment Variable:
 ```text
 NEXT_PUBLIC_APPS_SCRIPT_URL=https://script.google.com/macros/s/DEPLOYMENT_ID/exec
 ```
 
-Jika frontend memakai route proxy internal, pastikan route tersebut juga membaca environment variable yang sama.
+## Security
+- Requests private dan wajib session.
+- Public request tracking hanya menggunakan access token.
+- Admin tidak mendapat permission default.
+- Super Admin diperlukan untuk approval, ledger mutation, cash setup/adjustment, brand management dan administration.
+- Login memiliki lockout percobaan gagal dan session expiry.
 
-## GitHub → Vercel
+## Production checklist
+- [ ] `npm.cmd install` sukses
+- [ ] `npm.cmd run typecheck` sukses
+- [ ] `npm.cmd run build` sukses
+- [ ] Apps Script `/exec` aktif
+- [ ] `NEXT_PUBLIC_APPS_SCRIPT_URL` di Vercel sudah benar
+- [ ] Test login Admin
+- [ ] Test login Super Admin
+- [ ] Test brand access
+- [ ] Test request → approval
+- [ ] Test event approval
+- [ ] Test cash visibility
+- [ ] Test logout/session expiry
 
-Root repository adalah folder project ini. Karena Next.js berada di `frontend`, ada dua pilihan:
+## V25 fixed items
+- Tidak membuat default/shared Admin otomatis.
+- Admin wajib mengganti password sementara pada login pertama.
+- Password change tersedia untuk Admin dan Super Admin.
+- Session menolak akses aplikasi selama `must_change_password=true`.
+- Approval Sponsor membuat pemasukan ledger setelah disetujui.
+- Requests tetap private dan wajib authenticated.
 
-### Pilihan A — Vercel Root Directory
-Set:
 
-```text
-Root Directory = frontend
-```
-
-Build command:
-
-```text
-npm run build
-```
-
-Output Directory biarkan default Next.js.
-
-### Pilihan B — Repository root
-Gunakan konfigurasi Vercel yang menjalankan build dari `frontend`. Jangan set Output Directory menjadi `public` karena ini bukan static export.
-
-## Environment
-
-Salin `.env.example` menjadi `.env.local` jika perlu. Jangan commit secret.
-
-## Verifikasi sebelum production
+## Final verification
+The release archive is source-only by design: no `node_modules`, `.next`, or TypeScript build-info artifacts are shipped. Before GitHub/Vercel deployment, run the exact commands below from `frontend/`:
 
 ```powershell
+npm.cmd install
 npm.cmd run typecheck
 npm.cmd run build
+npm.cmd run dev
 ```
 
-Build harus bersih sebelum push ke GitHub.
-
-## Catatan database
-
-Spreadsheet adalah source of truth. Jalankan setup Apps Script sebelum frontend mencoba membaca dashboard, brand, cash, transaksi, event, atau request.
-
-## Versi
-
-V15 — Ultra Enterprise Command Center.
+If `typecheck` or `build` reports an error, stop deployment and fix that error first. Vercel Root Directory must be `frontend`; Output Directory must remain the default for Next.js.

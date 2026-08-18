@@ -8,14 +8,20 @@ const REQUEST_ACCESS_KEY = 'tcc_request_access_token';
 const ROLE_KEY = 'tcc_auth_role';
 const USER_ID_KEY = 'tcc_auth_user_id';
 const USER_NAME_KEY = 'tcc_auth_user_name';
+const MUST_CHANGE_KEY = 'tcc_must_change_password';
 
 export function getSuperAdminToken(): string { return typeof window === 'undefined' ? '' : localStorage.getItem(TOKEN_KEY) || ''; }
 export function getSuperAdminEmail(): string { return typeof window === 'undefined' ? '' : localStorage.getItem(EMAIL_KEY) || ''; }
-export function saveAuthSession(token:string,email:string,role:string,userId?:string,userName?:string){localStorage.setItem(TOKEN_KEY,token);localStorage.setItem(EMAIL_KEY,email);localStorage.setItem(ROLE_KEY,role);if(userId)localStorage.setItem(USER_ID_KEY,userId);if(userName)localStorage.setItem(USER_NAME_KEY,userName); if (typeof window !== 'undefined') window.dispatchEvent(new Event('tcc-auth-changed'));}
+export function saveAuthSession(token:string,email:string,role:string,userId?:string,userName?:string,mustChangePassword=false){localStorage.setItem(TOKEN_KEY,token);localStorage.setItem(EMAIL_KEY,email);localStorage.setItem(ROLE_KEY,role);if(userId)localStorage.setItem(USER_ID_KEY,userId);if(userName)localStorage.setItem(USER_NAME_KEY,userName); localStorage.setItem(MUST_CHANGE_KEY,mustChangePassword?'1':'0'); if (typeof window !== 'undefined') window.dispatchEvent(new Event('tcc-auth-changed'));}
 export function saveSuperAdminSession(token: string, email: string) { saveAuthSession(token,email,'SUPER_ADMIN',email,email); }
-export function clearSuperAdminSession() { [TOKEN_KEY,EMAIL_KEY,ROLE_KEY,USER_ID_KEY,USER_NAME_KEY].forEach(k=>localStorage.removeItem(k)); if (typeof window !== 'undefined') window.dispatchEvent(new Event('tcc-auth-changed')); }
+export function clearSuperAdminSession() {
+  if (typeof window === 'undefined') return;
+  [TOKEN_KEY,EMAIL_KEY,ROLE_KEY,USER_ID_KEY,USER_NAME_KEY,MUST_CHANGE_KEY,REQUEST_ACCESS_KEY].forEach(k=>window.localStorage.removeItem(k));
+  window.dispatchEvent(new Event('tcc-auth-changed'));
+}
 export function getAuthRole(){return typeof window==='undefined'?'':localStorage.getItem(ROLE_KEY)||'';}
 export function getAuthUserId(){return typeof window==='undefined'?'':localStorage.getItem(USER_ID_KEY)||'';}
+export function mustChangePassword(){return typeof window==='undefined'?false:localStorage.getItem(MUST_CHANGE_KEY)==='1';}
 export function getAuthUserName(){return typeof window==='undefined'?'':localStorage.getItem(USER_NAME_KEY)||'';}
 export function getAuthToken(){return getSuperAdminToken();}
 export function getRequestAccessToken(): string { return typeof window === 'undefined' ? '' : localStorage.getItem(REQUEST_ACCESS_KEY) || ''; }
@@ -47,7 +53,7 @@ async function apiSend<T>(action: string, body: Record<string, unknown> = {}, me
   return json.data as T;
 }
 
-export type Dashboard = { saldo:number; total_income:number; total_expense:number; jumlah_event:number; jumlah_transaksi:number; transaksi_terbaru:Transaction[] };
+export type Dashboard = { saldo:number; total_income:number; total_expense:number; jumlah_event:number; jumlah_transaksi:number; transaksi_terbaru:Transaction[]; cash_by_brand?:CashAccount[]; monthly_cashflow?:{key:string;label:string;income:number;expense:number}[] };
 export type Category = { category_id:string; nama_kategori:string; tipe:string; status:string };
 export type PaymentMethod = { id:string; nama:string; status:string };
 export type Transaction = { transaction_id:string; type:'income'|'expense'; tanggal:string; jam:string; kategori:string; event_id:string; nominal:number; metode_pembayaran:string; penginput:string; catatan:string; bukti:string; created_at:string; brand_id:string; [key:string]:unknown };
@@ -55,7 +61,7 @@ export type Brand = { brand_id:string; nama_brand:string; status:string; created
 export type CashAccount = { brand_id:string; nama_brand:string; saldo_awal:number; total_income:number; total_expense:number; saldo_sistem:number; saldo_aktual:number; updated_at:string };
 export type FinanceRequest = { request_id:string; brand_id:string; user_id:string; user_name:string; type:'INCOME'|'EXPENSE'|'TOURNAMENT'|'SPONSOR'|'EVENT'; nama:string; kategori:string; event_id:string; nominal:number; metode_pembayaran:string; vendor:string; catatan:string; bukti:string; status:string; approved_by:string; approved_at:string; rejection_reason:string; created_at:string; game:string; kategori_event:string; sistem_turnamen:string; tanggal_mulai:string; tanggal_selesai:string; jumlah_peserta:number; biaya_registrasi:number; target_pemasukan:number; budget:number; prize_pool:number; whatsapp_url:string };
 export type EventItem = { event_id:string; brand_id:string; nama_event:string; game:string; kategori_event:string; sistem_turnamen:string; tanggal_mulai:string; tanggal_selesai:string; jumlah_peserta:number; biaya_registrasi:number; target_pemasukan:number; budget:number; prize_pool:number; sponsor_revenue?:number; other_income?:number; other_expense?:number; expected_profit?:number; status:string; created_at?:string };
-export type LoginResult = { token:string; role:'SUPER_ADMIN'|'ADMIN'; user_id?:string; user_name?:string; email:string; expires_at:number };
+export type LoginResult = { token:string; role:'SUPER_ADMIN'|'ADMIN'; user_id?:string; user_name?:string; email:string; expires_at:number; must_change_password?:boolean; };
 
 export const api = {
   login: (email:string,password:string) => apiSend<LoginResult>('login',{email,password}),
@@ -79,7 +85,7 @@ export const api = {
   deleteEvent: (id:string) => apiSend('event',{id},'DELETE',true),
   getBrands: () => apiGet<Brand[]>('brands',{},true),
   getCash: () => apiGet<CashAccount[]>('cash',{},true),
-  getRequests: (params:Record<string,string>={}, auth=false) => apiGet<FinanceRequest[]>('requests',params,auth),
+  getRequests: (params:Record<string,string>={}) => apiGet<FinanceRequest[]>('requests',params,true),
   getRequestStatus: (id:string) => apiGet<FinanceRequest>('request_status',{request_id:id,request_access_token:getRequestAccessToken()}),
   getUsers: () => apiGet<Record<string,unknown>[]>('users',{},true),
   getAccessControl: () => apiGet<any>('access',{},true),
@@ -87,8 +93,9 @@ export const api = {
   getAuditLogs: () => apiGet<Record<string,unknown>[]>('audit_logs',{},true),
   getReport: (params:Record<string,string>={}) => apiGet<any>('report',params,true),
   createAdmin: (data:Record<string,unknown>) => apiSend('auth_user',data,'POST',true),
-  createRequest: (data:Record<string,unknown>) => apiSend<{request_id:string;status:string;type:string;request_access_token:string}>('request',data,'POST',!!getAuthToken()),
+  createRequest: (data:Record<string,unknown>) => apiSend<{request_id:string;status:string;type:string;request_access_token:string}>('request',data,'POST',true),
   approveRequest: (id:string,status:'APPROVED'|'REJECTED',reason='') => apiSend<{request_id:string;status:string;whatsapp_url:string}>('request',{id,status,reason},'PUT',true),
+  cancelRequest: (id:string,reason='') => apiSend<{request_id:string;status:string}>('request',{id,status:'CANCELLED',reason},'PUT',true),
   createBrand: (data:Record<string,unknown>) => apiSend('brand',data,'POST',true),
   updateBrand: (id:string,fields:Record<string,unknown>) => apiSend('brand',{id,fields},'PUT',true),
   deleteBrand: (id:string) => apiSend('brand',{id},'DELETE',true),
