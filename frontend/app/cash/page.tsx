@@ -2,9 +2,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, CashAccount, getAuthRole } from '@/lib/api';
 import { formatRupiah } from '@/utils/formatters';
+import { useEscapeKey } from '@/hooks/useEscapeKey';
 
 export default function CashPage(){
  const [role,setRole]=useState(''); const [cash,setCash]=useState<CashAccount[]>([]); const [loading,setLoading]=useState(true); const [error,setError]=useState(''); const [selected,setSelected]=useState<CashAccount|null>(null); const [actual,setActual]=useState(''); const [note,setNote]=useState(''); const [busy,setBusy]=useState(false);
+ useEscapeKey(!!selected,()=>setSelected(null));
  const load=useCallback(async()=>{setLoading(true);setError('');try{setCash(await api.getCash())}catch(e){setError(e instanceof Error?e.message:'Gagal memuat kas')}finally{setLoading(false)}},[]);
  useEffect(()=>{setRole(getAuthRole());void load()},[load]);
  const isSuper=role==='SUPER_ADMIN';

@@ -1,5 +1,6 @@
 import './globals.css';
 import Navigation from '@/components/common/Navigation';
+import SessionExpiryWarning from '@/components/common/SessionExpiryWarning';
 
 export const metadata = {
   title: 'TCC Finance — Command Center',
@@ -32,6 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <footer className="footer">TCC Finance · Secure operational ledger · Google Sheets backend</footer>
           </div>
         </div>
+        <SessionExpiryWarning />
       </body>
     </html>
   );
